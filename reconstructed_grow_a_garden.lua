@@ -2063,6 +2063,1255 @@ function Reconstructed.GetNetworkingGAG2(context)
 	return safeRequire(context.Require, networkingModule)
 end
 
+Reconstructed.NetworkingDumpGAG2 = Reconstructed.NetworkingDumpGAG2 or {}
+Reconstructed.NetworkingIndexGAG2 = Reconstructed.NetworkingIndexGAG2 or {}
+Reconstructed.PacketAttemptsGAG2 = Reconstructed.PacketAttemptsGAG2 or {}
+
+local function valueTypeGAG2(value)
+	if type(typeof) == "function" then
+		local success, result = safeCall(typeof, value)
+
+		if success then
+			return result
+		end
+	end
+
+	return type(value)
+end
+
+local function getPacketCallableFlagsGAG2(node)
+	local nodeType = type(node)
+
+	return {
+		HasFire = type(safeProp(node, "Fire")) == "function",
+		HasInvoke = type(safeProp(node, "Invoke")) == "function",
+		HasFireServer = type(safeProp(node, "FireServer")) == "function",
+		HasInvokeServer = type(safeProp(node, "InvokeServer")) == "function",
+		HasCall = nodeType == "function" or type(safeProp(node, "Call")) == "function",
+	}
+end
+
+local function hasPacketCallableGAG2(entry)
+	return entry.HasFire or entry.HasInvoke or entry.HasFireServer or entry.HasInvokeServer or entry.HasCall
+end
+
+local function pathChildGAG2(path, key)
+	local keyText = tostring(key)
+
+	if type(key) == "number" then
+		return path .. "[" .. keyText .. "]"
+	end
+
+	if path == "" then
+		return keyText
+	end
+
+	return path .. "." .. keyText
+end
+
+local function listValuesGAG2(value)
+	local list = {}
+
+	if type(value) == "table" then
+		for _, child in pairs(value) do
+			if child ~= nil and child ~= false then
+				table.insert(list, child)
+			end
+		end
+	elseif value ~= nil and value ~= false then
+		table.insert(list, value)
+	end
+
+	return list
+end
+
+local function addIndexEntryGAG2(index, entry)
+	index.Entries = index.Entries or {}
+	index.ByName = index.ByName or {}
+	index.ByPath = index.ByPath or {}
+	index.ByNamespace = index.ByNamespace or {}
+
+	table.insert(index.Entries, entry)
+	index.ByPath[entry.Path] = entry
+
+	local normalizedName = Reconstructed.NormalizePacketNameGAG2(entry.Name)
+	local normalizedNamespace = Reconstructed.NormalizePacketNameGAG2(entry.Namespace)
+
+	if normalizedName ~= "" then
+		index.ByName[normalizedName] = index.ByName[normalizedName] or {}
+		table.insert(index.ByName[normalizedName], entry)
+	end
+
+	if normalizedNamespace ~= "" then
+		index.ByNamespace[normalizedNamespace] = index.ByNamespace[normalizedNamespace] or {}
+		table.insert(index.ByNamespace[normalizedNamespace], entry)
+	end
+end
+
+local function preferredKindMatchesGAG2(entry, preferredKind)
+	local kind = Reconstructed.NormalizePacketNameGAG2(preferredKind)
+
+	if kind == "" then
+		return true
+	end
+
+	if kind:find("fire", 1, true) then
+		return entry.HasFire or entry.HasFireServer
+	end
+
+	if kind:find("invoke", 1, true) then
+		return entry.HasInvoke or entry.HasInvokeServer
+	end
+
+	if kind:find("call", 1, true) then
+		return entry.HasCall
+	end
+
+	return true
+end
+
+local function choosePacketMethodGAG2(node, entry, preferredKind)
+	local preferred = Reconstructed.NormalizePacketNameGAG2(preferredKind)
+	local order = {}
+
+	if preferred:find("fireserver", 1, true) then
+		order = { "FireServer", "Fire", "Call", "InvokeServer", "Invoke" }
+	elseif preferred:find("fire", 1, true) then
+		order = { "Fire", "FireServer", "Call", "Invoke", "InvokeServer" }
+	elseif preferred:find("invokeserver", 1, true) then
+		order = { "InvokeServer", "Invoke", "Call", "FireServer", "Fire" }
+	elseif preferred:find("invoke", 1, true) then
+		order = { "Invoke", "InvokeServer", "Call", "Fire", "FireServer" }
+	elseif preferred:find("call", 1, true) then
+		order = { "Call", "Fire", "Invoke", "FireServer", "InvokeServer" }
+	else
+		order = { "Fire", "Invoke", "FireServer", "InvokeServer", "Call" }
+	end
+
+	if type(node) == "function" and (preferred == "" or preferred:find("call", 1, true)) then
+		return "Function"
+	end
+
+	for _, method in ipairs(order) do
+		if method == "Fire" and entry and entry.HasFire then
+			return method
+		elseif method == "Invoke" and entry and entry.HasInvoke then
+			return method
+		elseif method == "FireServer" and entry and entry.HasFireServer then
+			return method
+		elseif method == "InvokeServer" and entry and entry.HasInvokeServer then
+			return method
+		elseif method == "Call" and entry and entry.HasCall then
+			if type(node) == "function" then
+				return "Function"
+			end
+
+			return method
+		end
+	end
+
+	local flags = getPacketCallableFlagsGAG2(node)
+	if flags.HasFire then
+		return "Fire"
+	elseif flags.HasInvoke then
+		return "Invoke"
+	elseif flags.HasFireServer then
+		return "FireServer"
+	elseif flags.HasInvokeServer then
+		return "InvokeServer"
+	elseif type(node) == "function" then
+		return "Function"
+	elseif flags.HasCall then
+		return "Call"
+	end
+
+	return nil
+end
+
+local function entryNamespaceMatchesGAG2(entry, namespaceNames)
+	local namespaces = listValuesGAG2(namespaceNames)
+
+	if #namespaces == 0 then
+		return true
+	end
+
+	local haystack = Reconstructed.NormalizePacketNameGAG2(tostring(entry.Namespace or "") .. "." .. tostring(entry.Path or ""))
+
+	for _, namespace in ipairs(namespaces) do
+		local needle = Reconstructed.NormalizePacketNameGAG2(namespace)
+
+		if needle ~= "" and haystack:find(needle, 1, true) then
+			return true
+		end
+	end
+
+	return false
+end
+
+local function selectionEntriesGAG2(selection, defaultCount)
+	local entries = {}
+	defaultCount = tonumber(defaultCount) or 1
+
+	if type(selection) == "string" then
+		if selection ~= "" and selection ~= "None" then
+			table.insert(entries, { Name = selection, Count = defaultCount })
+		end
+
+		return entries
+	end
+
+	if type(selection) ~= "table" then
+		return entries
+	end
+
+	for key, value in pairs(selection) do
+		if type(value) == "string" and value ~= "" and value ~= "None" then
+			table.insert(entries, { Name = value, Count = defaultCount })
+		elseif isTruthySelectionValue(key, value) then
+			local count = tonumber(value) or defaultCount
+			table.insert(entries, { Name = tostring(key), Count = math.max(1, count) })
+		end
+	end
+
+	return entries
+end
+
+local function inventoryCountForNameGAG2(counts, name)
+	name = tostring(name or "")
+
+	return counts[name]
+		or counts[name .. " Seed"]
+		or counts[name .. " Seeds"]
+		or counts[name .. " Gear"]
+		or 0
+end
+
+function Reconstructed.NormalizePacketNameGAG2(value)
+	if value == nil then
+		return ""
+	end
+
+	local normalized = tostring(value):lower():gsub("[^%w]+", "")
+	return normalized
+end
+
+function Reconstructed.ScanNetworkingTableGAG2(root, namespace, path, depth, dump, index, seen, options)
+	options = options or {}
+	dump = dump or {}
+	index = index or { Entries = {}, ByName = {}, ByPath = {}, ByNamespace = {} }
+	seen = seen or {}
+	depth = tonumber(depth) or 0
+	path = path or "Networking"
+	namespace = namespace or ""
+
+	local maxDepth = tonumber(options.MaxDepth) or 8
+	local maxEntries = tonumber(options.MaxEntries) or 1500
+	local rootType = type(root)
+	local flags = getPacketCallableFlagsGAG2(root)
+	local entry = {
+		Path = path,
+		Name = tostring(path):match("([^%.%[%]]+)%]?$") or tostring(path),
+		Namespace = namespace,
+		Type = valueTypeGAG2(root),
+		HasFire = flags.HasFire,
+		HasInvoke = flags.HasInvoke,
+		HasFireServer = flags.HasFireServer,
+		HasInvokeServer = flags.HasInvokeServer,
+		HasCall = flags.HasCall,
+		Ref = root,
+	}
+
+	if options.RecordAll ~= false or hasPacketCallableGAG2(entry) then
+		table.insert(dump, entry)
+		addIndexEntryGAG2(index, entry)
+	end
+
+	if rootType ~= "table" or depth >= maxDepth or #dump >= maxEntries then
+		return dump, index
+	end
+
+	if seen[root] then
+		return dump, index
+	end
+
+	seen[root] = true
+
+	safeCall(function()
+		for key, child in pairs(root) do
+			if #dump >= maxEntries then
+				break
+			end
+
+			local childPath = pathChildGAG2(path, key)
+			Reconstructed.ScanNetworkingTableGAG2(child, path, childPath, depth + 1, dump, index, seen, options)
+		end
+	end)
+
+	return dump, index
+end
+
+function Reconstructed.BuildNetworkingIndexGAG2(context, networking, options)
+	context = context or {}
+	networking = networking or context.Networking or Reconstructed.GetNetworkingGAG2(context)
+
+	local dump = {}
+	local index = {
+		Entries = {},
+		ByName = {},
+		ByPath = {},
+		ByNamespace = {},
+		BuiltAt = os and os.time and os.time() or 0,
+	}
+
+	if networking then
+		Reconstructed.ScanNetworkingTableGAG2(networking, "", "Networking", 0, dump, index, {}, options or {})
+	end
+
+	Reconstructed.NetworkingDumpGAG2 = dump
+	Reconstructed.NetworkingIndexGAG2 = index
+	return index, dump
+end
+
+function Reconstructed.ScanNetworkingGAG2(context, options)
+	context = context or {}
+	local networking = context.Networking or Reconstructed.GetNetworkingGAG2(context)
+	local index, dump = Reconstructed.BuildNetworkingIndexGAG2(context, networking, options)
+	recordAction("NetworkingScanGAG2", "Networking", { #dump })
+	return index, dump
+end
+
+function Reconstructed.GetNetworkingDumpTextGAG2(context)
+	context = context or {}
+
+	if not Reconstructed.NetworkingDumpGAG2 or #Reconstructed.NetworkingDumpGAG2 == 0 then
+		Reconstructed.ScanNetworkingGAG2(context)
+	end
+
+	local lines = {}
+
+	for _, entry in ipairs(Reconstructed.NetworkingDumpGAG2 or {}) do
+		local flags = {}
+
+		if entry.HasFire then
+			table.insert(flags, "Fire")
+		end
+
+		if entry.HasInvoke then
+			table.insert(flags, "Invoke")
+		end
+
+		if entry.HasFireServer then
+			table.insert(flags, "FireServer")
+		end
+
+		if entry.HasInvokeServer then
+			table.insert(flags, "InvokeServer")
+		end
+
+		if entry.HasCall then
+			table.insert(flags, "Call")
+		end
+
+		table.insert(lines, table.concat({ entry.Path, entry.Type or "nil", entry.Namespace or "", table.concat(flags, ",") }, " | "))
+	end
+
+	return table.concat(lines, "\n")
+end
+
+function Reconstructed.PrintDumpGAG2(context)
+	local text = Reconstructed.GetNetworkingDumpTextGAG2(context)
+
+	if type(print) == "function" then
+		print(text)
+	else
+		recordAction("NetworkingDumpGAG2", "Print", { text })
+	end
+
+	return text
+end
+
+function Reconstructed.CopyDumpGAG2(context)
+	local text = Reconstructed.GetNetworkingDumpTextGAG2(context)
+
+	if type(setclipboard) == "function" then
+		local success = safeCall(setclipboard, text)
+
+		if success then
+			return true, text
+		end
+	end
+
+	recordPlanner("Copy Networking Dump", { Text = text, ClipboardUnavailable = true })
+	return false, text
+end
+
+function Reconstructed.SaveDumpGAG2(context)
+	context = context or {}
+	local text = Reconstructed.GetNetworkingDumpTextGAG2(context)
+	local path = context.NetworkingDumpPath or "GAG2NetworkingDump.txt"
+
+	if type(writefile) == "function" then
+		local success = safeCall(writefile, path, text)
+
+		if success then
+			return true, path
+		end
+	end
+
+	recordPlanner("Save Networking Dump", { Path = path, Text = text, WriteFileUnavailable = true })
+	return false, path
+end
+
+function Reconstructed.GetNodeByPacketPathGAG2(networking, path)
+	if not networking or type(path) ~= "string" or path == "" then
+		return nil
+	end
+
+	local current = networking
+	local normalizedPath = path:gsub("^Networking%.", ""):gsub("^Networking$", "")
+
+	if normalizedPath == "" then
+		return current
+	end
+
+	for part in normalizedPath:gmatch("[^%.]+") do
+		local key = part:match("^([^%[]+)") or part
+		local index = part:match("%[(%d+)%]")
+
+		if key ~= "" then
+			current = safeProp(current, key)
+		end
+
+		if index then
+			current = safeProp(current, tonumber(index))
+		end
+
+		if current == nil then
+			return nil
+		end
+	end
+
+	return current
+end
+
+function Reconstructed.ResolveNetworkingPacketGAG2(context, namespaceNames, packetAliases, preferredKind)
+	context = context or {}
+
+	if not Reconstructed.NetworkingIndexGAG2 or not Reconstructed.NetworkingIndexGAG2.Entries or #Reconstructed.NetworkingIndexGAG2.Entries == 0 then
+		Reconstructed.ScanNetworkingGAG2(context)
+	end
+
+	local index = Reconstructed.NetworkingIndexGAG2 or {}
+	local aliases = listValuesGAG2(packetAliases)
+	local fallback = nil
+
+	for _, alias in ipairs(aliases) do
+		local normalized = Reconstructed.NormalizePacketNameGAG2(alias)
+		local entries = normalized ~= "" and index.ByName and index.ByName[normalized] or nil
+
+		for _, entry in ipairs(entries or {}) do
+			if entryNamespaceMatchesGAG2(entry, namespaceNames) and hasPacketCallableGAG2(entry) then
+				fallback = fallback or entry
+
+				if preferredKindMatchesGAG2(entry, preferredKind) then
+					local node = entry.Ref or Reconstructed.GetNodeByPacketPathGAG2(context.Networking or Reconstructed.GetNetworkingGAG2(context), entry.Path)
+					return {
+						Entry = entry,
+						Node = node,
+						Path = entry.Path,
+						Name = entry.Name,
+						Namespace = entry.Namespace,
+						Method = choosePacketMethodGAG2(node, entry, preferredKind),
+					}
+				end
+			end
+		end
+	end
+
+	if fallback then
+		local node = fallback.Ref or Reconstructed.GetNodeByPacketPathGAG2(context.Networking or Reconstructed.GetNetworkingGAG2(context), fallback.Path)
+		return {
+			Entry = fallback,
+			Node = node,
+			Path = fallback.Path,
+			Name = fallback.Name,
+			Namespace = fallback.Namespace,
+			Method = choosePacketMethodGAG2(node, fallback, preferredKind),
+		}
+	end
+
+	local normalizedAliases = {}
+
+	for _, alias in ipairs(aliases) do
+		table.insert(normalizedAliases, Reconstructed.NormalizePacketNameGAG2(alias))
+	end
+
+	for _, entry in ipairs(index.Entries or {}) do
+		local normalizedPath = Reconstructed.NormalizePacketNameGAG2(entry.Path)
+
+		for _, alias in ipairs(normalizedAliases) do
+			if alias ~= "" and normalizedPath:find(alias, 1, true) and entryNamespaceMatchesGAG2(entry, namespaceNames) and hasPacketCallableGAG2(entry) and preferredKindMatchesGAG2(entry, preferredKind) then
+				local node = entry.Ref or Reconstructed.GetNodeByPacketPathGAG2(context.Networking or Reconstructed.GetNetworkingGAG2(context), entry.Path)
+				return {
+					Entry = entry,
+					Node = node,
+					Path = entry.Path,
+					Name = entry.Name,
+					Namespace = entry.Namespace,
+					Method = choosePacketMethodGAG2(node, entry, preferredKind),
+				}
+			end
+		end
+	end
+
+	return nil
+end
+
+function Reconstructed.SafeCallPacketGAG2(context, packetRef, args, options)
+	context = context or {}
+	options = options or {}
+	args = args or {}
+
+	local entry = packetRef and packetRef.Entry or packetRef
+	local node = packetRef and (packetRef.Node or packetRef.Ref) or nil
+	local path = packetRef and (packetRef.Path or safeProp(entry, "Path")) or nil
+
+	if not node and entry and entry.Ref then
+		node = entry.Ref
+	end
+
+	if not node and path then
+		node = Reconstructed.GetNodeByPacketPathGAG2(context.Networking or Reconstructed.GetNetworkingGAG2(context), path)
+	end
+
+	local method = options.Method or packetRef and packetRef.Method or choosePacketMethodGAG2(node, entry, options.PreferredKind)
+	local attempt = {
+		Feature = options.Feature,
+		Path = path or safeProp(entry, "Path") or tostring(packetRef),
+		Name = packetRef and (packetRef.Name or safeProp(entry, "Name")) or safeProp(entry, "Name"),
+		Namespace = packetRef and (packetRef.Namespace or safeProp(entry, "Namespace")) or safeProp(entry, "Namespace"),
+		Method = method,
+		Args = args,
+		Executed = false,
+		Success = false,
+	}
+
+	table.insert(Reconstructed.PacketAttemptsGAG2, attempt)
+	recordAction("PacketAttemptGAG2", attempt.Name or attempt.Path or "Packet", { attempt })
+
+	if not shouldExecuteRemotes(context) then
+		recordPlanner(options.Feature or "Packet Attempt", attempt)
+		return false
+	end
+
+	if not node or not method then
+		attempt.Error = "Packet method not found"
+		return false
+	end
+
+	local unpackArgs = table.unpack or unpack
+	local success, result
+
+	if method == "Function" and type(node) == "function" then
+		success, result = safeCall(function()
+			return node(unpackArgs(args))
+		end)
+	else
+		local callable = safeProp(node, method)
+
+		if type(callable) ~= "function" then
+			attempt.Error = "Callable missing"
+			return false
+		end
+
+		success, result = safeCall(function()
+			return callable(node, unpackArgs(args))
+		end)
+	end
+
+	attempt.Executed = true
+	attempt.Success = success
+	attempt.Result = result
+	return success, result
+end
+
+function Reconstructed.TryPacketCandidatesGAG2(context, candidates, argVariants, options)
+	context = context or {}
+	options = options or {}
+	argVariants = argVariants or { {} }
+
+	local attempted = false
+
+	for _, candidate in ipairs(toList(candidates)) do
+		local packetRef = nil
+
+		if type(candidate) == "string" then
+			packetRef = Reconstructed.ResolveNetworkingPacketGAG2(context, options.Namespaces or options.Namespace, { candidate }, options.PreferredKind)
+		elseif type(candidate) == "table" and (candidate.Node or candidate.Entry or candidate.Path) then
+			packetRef = candidate
+		elseif type(candidate) == "table" then
+			packetRef = Reconstructed.ResolveNetworkingPacketGAG2(
+				context,
+				candidate.Namespaces or candidate.Namespace or options.Namespaces or options.Namespace,
+				candidate.Aliases or candidate.PacketAliases or candidate.Name,
+				candidate.PreferredKind or options.PreferredKind
+			)
+		end
+
+		if packetRef then
+			for _, args in ipairs(argVariants) do
+				attempted = true
+				local success, result = Reconstructed.SafeCallPacketGAG2(context, packetRef, args, {
+					Feature = options.Feature,
+					PreferredKind = packetRef.PreferredKind or options.PreferredKind,
+					Method = packetRef.Method or options.Method,
+				})
+
+				if success then
+					return true, result, packetRef, true
+				end
+			end
+		end
+	end
+
+	if not attempted then
+		recordPlanner(options.Feature or "Packet Candidates", {
+			Candidates = candidates,
+			ArgVariants = argVariants,
+			PacketNotFound = true,
+		})
+	end
+
+	return false, nil, nil, attempted
+end
+
+function Reconstructed.BuySeedGAG2(context, seedName, options)
+	context = context or {}
+	options = options or {}
+
+	if not seedName or seedName == "" then
+		return false
+	end
+
+	local aliases = { "BuySeed", "PurchaseSeed", "SeedShopPurchase", "PurchaseSeedStock", "BuySeedStock", "BuyItem", "PurchaseItem" }
+	local success, _, _, attempted = Reconstructed.TryPacketCandidatesGAG2(context, {
+		{
+			Namespaces = { "SeedShop", "Seeds", "Shop" },
+			Aliases = aliases,
+			PreferredKind = "Fire",
+		},
+	}, {
+		{ seedName },
+		{ seedName, options.Amount or 1 },
+		{ seedName .. " Seed" },
+		{ seedName .. " Seed", options.Amount or 1 },
+	}, { Feature = "Seed Shop", PreferredKind = "Fire" })
+
+	if not attempted then
+		Reconstructed.SeedShopPlannerStub(context.GAGConfig or Reconstructed.GetEffectiveGAGConfig(), context)
+	end
+
+	return success
+end
+
+function Reconstructed.AutoBuySeedsGAG2(context, gagConfig)
+	context = context or {}
+	gagConfig = gagConfig or context.GAGConfig or Reconstructed.GetEffectiveGAGConfig()
+
+	local planting = section(gagConfig, "Planting")
+	local buySeeds = cfg(planting, "Buy Seeds", {})
+
+	if not hasSelection(buySeeds) then
+		if cfg(planting, "Auto Plant", true) then
+			Reconstructed.SeedShopPlannerStub(gagConfig, context)
+		end
+
+		return 0
+	end
+
+	local player = getLocalPlayer(context)
+	local counts = Reconstructed.GetInventoryCounts(player)
+	local bought = 0
+
+	for _, entry in ipairs(selectionEntriesGAG2(buySeeds, 1)) do
+		if not selectionMatches(cfg(planting, "Don't Buy", {}), entry.Name) then
+			local current = inventoryCountForNameGAG2(counts, entry.Name)
+			local needed = math.max(1, math.floor(tonumber(entry.Count) or 1))
+
+			for _ = current + 1, needed do
+				if Reconstructed.BuySeedGAG2(context, entry.Name, { Amount = 1 }) then
+					bought = bought + 1
+					safeWait(0.15)
+				else
+					break
+				end
+			end
+		end
+	end
+
+	return bought
+end
+
+function Reconstructed.BuyGearGAG2(context, gearName, options)
+	context = context or {}
+	options = options or {}
+
+	if not gearName or gearName == "" then
+		return false
+	end
+
+	local success, _, _, attempted = Reconstructed.TryPacketCandidatesGAG2(context, {
+		{
+			Namespaces = { "GearShop", "Gear", "Shop" },
+			Aliases = { "BuyGear", "PurchaseGear", "GearShopPurchase", "PurchaseGearStock", "BuyGearStock", "BuyItem", "PurchaseItem" },
+			PreferredKind = "Fire",
+		},
+	}, {
+		{ gearName },
+		{ gearName, options.Amount or 1 },
+	}, { Feature = "Gear Shop", PreferredKind = "Fire" })
+
+	if not attempted then
+		Reconstructed.GearShopPlannerStub(context.GAGConfig or Reconstructed.GetEffectiveGAGConfig(), context)
+	end
+
+	return success
+end
+
+function Reconstructed.AutoBuyGearGAG2(context, gagConfig)
+	context = context or {}
+	gagConfig = gagConfig or context.GAGConfig or Reconstructed.GetEffectiveGAGConfig()
+
+	local gear = section(gagConfig, "Gear")
+	if not cfg(gear, "Auto Buy", true) and not hasSelection(cfg(gear, "Buy Gear", {})) and not hasSelection(cfg(gear, "Keep Gear", {})) then
+		return 0
+	end
+
+	local selected = selectionEntriesGAG2(cfg(gear, "Buy Gear", {}), 1)
+	local keep = selectionEntriesGAG2(cfg(gear, "Keep Gear", {}), 1)
+
+	for _, entry in ipairs(keep) do
+		table.insert(selected, entry)
+	end
+
+	if #selected == 0 then
+		Reconstructed.GearShopPlannerStub(gagConfig, context)
+		return 0
+	end
+
+	local player = getLocalPlayer(context)
+	local counts = Reconstructed.GetInventoryCounts(player)
+	local bought = 0
+
+	for _, entry in ipairs(selected) do
+		local current = inventoryCountForNameGAG2(counts, entry.Name)
+		local needed = math.max(1, math.floor(tonumber(entry.Count) or 1))
+
+		for _ = current + 1, needed do
+			if Reconstructed.BuyGearGAG2(context, entry.Name, { Amount = 1 }) then
+				bought = bought + 1
+				safeWait(0.15)
+			else
+				break
+			end
+		end
+	end
+
+	return bought
+end
+
+function Reconstructed.BuyPetGAG2(context, petName, options)
+	context = context or {}
+	options = options or {}
+
+	if not petName or petName == "" then
+		return false
+	end
+
+	local success, _, _, attempted = Reconstructed.TryPacketCandidatesGAG2(context, {
+		{
+			Namespaces = { "Pets", "PetShop", "Pet", "Shop", "Egg" },
+			Aliases = { "BuyPet", "PurchasePet", "BuyEgg", "PurchaseEgg", "HatchPet", "PetShopPurchase", "PurchasePetEgg", "BuyPetEgg" },
+			PreferredKind = "Fire",
+		},
+	}, {
+		{ petName },
+		{ petName, options.Amount or 1 },
+	}, { Feature = "Pet Shop", PreferredKind = "Fire" })
+
+	if not attempted then
+		Reconstructed.PetShopPlannerStub(context.GAGConfig or Reconstructed.GetEffectiveGAGConfig(), context)
+	end
+
+	return success
+end
+
+function Reconstructed.EquipPetGAG2(context, petOrId, options)
+	context = context or {}
+	options = options or {}
+
+	local petId = getAttr(petOrId, "PetId") or getAttr(petOrId, "Id") or getAttr(petOrId, "UUID") or petOrId
+	local petName = getAttr(petOrId, "PetName") or safeProp(petOrId, "Name") or tostring(petId or "")
+
+	if not petId or petId == "" then
+		return false
+	end
+
+	local success, _, _, attempted = Reconstructed.TryPacketCandidatesGAG2(context, {
+		{
+			Namespaces = { "Pets", "Pet", "Inventory" },
+			Aliases = { "EquipPet", "PetEquip", "EquipPetById", "EquipCompanion", "SetPetEquipped" },
+			PreferredKind = "Fire",
+		},
+	}, {
+		{ petId },
+		{ petName },
+		{ petId, true },
+		{ petName, petId },
+	}, { Feature = "Pet Equip", PreferredKind = "Fire" })
+
+	if not attempted then
+		Reconstructed.PetShopPlannerStub(context.GAGConfig or Reconstructed.GetEffectiveGAGConfig(), context)
+	end
+
+	return success
+end
+
+function Reconstructed.BuyPetSlotGAG2(context, options)
+	context = context or {}
+	options = options or {}
+
+	local success, _, _, attempted = Reconstructed.TryPacketCandidatesGAG2(context, {
+		{
+			Namespaces = { "Pets", "Pet", "Slots", "Shop" },
+			Aliases = { "BuyPetSlot", "PurchasePetSlot", "UpgradePetSlot", "UnlockPetSlot", "BuyPetInventorySlot", "PurchasePetInventorySlot" },
+			PreferredKind = "Fire",
+		},
+	}, {
+		{},
+		{ options.MaxSlots },
+	}, { Feature = "Pet Slots", PreferredKind = "Fire" })
+
+	if not attempted then
+		Reconstructed.PetShopPlannerStub(context.GAGConfig or Reconstructed.GetEffectiveGAGConfig(), context)
+	end
+
+	return success
+end
+
+function Reconstructed.AutoPetsGAG2(context, gagConfig)
+	context = context or {}
+	gagConfig = gagConfig or context.GAGConfig or Reconstructed.GetEffectiveGAGConfig()
+
+	local pets = section(gagConfig, "Pets")
+	local acted = 0
+
+	for _, entry in ipairs(selectionEntriesGAG2(cfg(pets, "Buy", {}), 1)) do
+		for _ = 1, math.max(1, math.floor(tonumber(entry.Count) or 1)) do
+			if Reconstructed.BuyPetGAG2(context, entry.Name, { Amount = 1 }) then
+				acted = acted + 1
+				safeWait(0.2)
+			else
+				break
+			end
+		end
+	end
+
+	local equipEntries = selectionEntriesGAG2(cfg(pets, "Equip", {}), 1)
+	if #equipEntries > 0 then
+		local equippedCounts = {}
+		local tools = Reconstructed.GetAllTool(getLocalPlayer(context))
+
+		for _, tool in ipairs(tools) do
+			local petName = getAttr(tool, "PetName") or safeProp(tool, "Name", "")
+
+			for _, entry in ipairs(equipEntries) do
+				if selectionMatches(entry.Name, petName) and (equippedCounts[entry.Name] or 0) < entry.Count then
+					if Reconstructed.EquipPetGAG2(context, tool) then
+						equippedCounts[entry.Name] = (equippedCounts[entry.Name] or 0) + 1
+						acted = acted + 1
+						safeWait(0.15)
+					end
+				end
+			end
+		end
+	end
+
+	if cfg(pets, "Auto Buy Slots", true) then
+		if Reconstructed.BuyPetSlotGAG2(context, { MaxSlots = cfg(pets, "Max Pet Slots", 6) }) then
+			acted = acted + 1
+		end
+	elseif acted == 0 and (hasSelection(cfg(pets, "Buy", {})) or hasSelection(cfg(pets, "Equip", {}))) then
+		Reconstructed.PetShopPlannerStub(gagConfig, context)
+	end
+
+	return acted
+end
+
+function Reconstructed.ClaimMailGAG2(context, mailId, options)
+	context = context or {}
+	options = options or {}
+
+	local argVariants = mailId and { { mailId }, {} } or { {} }
+	local success, _, _, attempted = Reconstructed.TryPacketCandidatesGAG2(context, {
+		{
+			Namespaces = { "Mail", "Mailbox", "Gifts" },
+			Aliases = { "ClaimMail", "ClaimAllMail", "ClaimMailbox", "AcceptMail", "ClaimGift", "ClaimAllGifts" },
+			PreferredKind = "Fire",
+		},
+	}, argVariants, { Feature = "Mail", PreferredKind = "Fire" })
+
+	if not attempted then
+		Reconstructed.MailPlannerStub(context.GAGConfig or Reconstructed.GetEffectiveGAGConfig(), context)
+	end
+
+	return success
+end
+
+function Reconstructed.SendMailGAG2(context, recipient, itemOrId, options)
+	context = context or {}
+	options = options or {}
+
+	if not recipient or recipient == "" or not itemOrId then
+		return false
+	end
+
+	local itemId = getAttr(itemOrId, "Id") or getAttr(itemOrId, "UUID") or getAttr(itemOrId, "PetId") or getAttr(itemOrId, "FruitId") or itemOrId
+	local itemName = safeProp(itemOrId, "Name") or tostring(itemId)
+	local success, _, _, attempted = Reconstructed.TryPacketCandidatesGAG2(context, {
+		{
+			Namespaces = { "Mail", "Mailbox", "Gifts" },
+			Aliases = { "SendMail", "MailboxSend", "SendGift", "GiftItem", "SendItem", "MailItem" },
+			PreferredKind = "Fire",
+		},
+	}, {
+		{ recipient, itemId },
+		{ recipient, itemId, itemName },
+		{ itemId, recipient },
+		{ recipient, itemOrId },
+	}, { Feature = "Mail Send", PreferredKind = "Fire" })
+
+	if not attempted then
+		Reconstructed.MailPlannerStub(context.GAGConfig or Reconstructed.GetEffectiveGAGConfig(), context)
+	end
+
+	return success
+end
+
+function Reconstructed.AutoMailGAG2(context, gagConfig)
+	context = context or {}
+	gagConfig = gagConfig or context.GAGConfig or Reconstructed.GetEffectiveGAGConfig()
+
+	local mail = section(gagConfig, "Mail")
+	local acted = 0
+
+	if cfg(mail, "Auto Claim", true) and Reconstructed.ClaimMailGAG2(context) then
+		acted = acted + 1
+	end
+
+	local recipient = cfg(mail, "Send To", "")
+	local sendSelection = cfg(mail, "Send", {})
+
+	if recipient ~= "" and hasSelection(sendSelection) then
+		for _, tool in ipairs(Reconstructed.GetAllTool(getLocalPlayer(context))) do
+			local itemName = safeProp(tool, "Name", "")
+
+			if selectionMatches(sendSelection, itemName) and not getAttr(tool, "IsFavorite") then
+				if Reconstructed.SendMailGAG2(context, recipient, tool) then
+					acted = acted + 1
+					safeWait(0.25)
+				end
+			end
+		end
+	elseif acted == 0 and (cfg(mail, "Auto Claim", true) or recipient ~= "" or hasSelection(sendSelection)) then
+		Reconstructed.MailPlannerStub(gagConfig, context)
+	end
+
+	return acted
+end
+
+function Reconstructed.BuyAuctionLotGAG2(context, lot, price, options)
+	context = context or {}
+	options = options or {}
+
+	local lotId = type(lot) == "table" and (lot.Id or lot.LotId or lot.Name) or lot
+	local lotPrice = price or type(lot) == "table" and lot.Price or nil
+
+	if not lotId or lotId == "" then
+		return false
+	end
+
+	lotId = tostring(lotId):gsub("^Lot_", "")
+
+	local success, _, _, attempted = Reconstructed.TryPacketCandidatesGAG2(context, {
+		{
+			Namespaces = { "Auction", "Auctioneer" },
+			Aliases = { "AuctioneerPurchaseLot", "PurchaseAuctionLot", "BuyAuctionLot", "AuctionBuy", "BidAuctionLot", "PurchaseLot" },
+			PreferredKind = "Fire",
+		},
+	}, {
+		{ lotId, lotPrice },
+		{ lotId },
+		{ lot },
+	}, { Feature = "Auction", PreferredKind = "Fire" })
+
+	if not attempted then
+		Reconstructed.AuctionPlannerStub(context.GAGConfig or Reconstructed.GetEffectiveGAGConfig(), context)
+	end
+
+	return success
+end
+
+function Reconstructed.GetAuctionLotsGAG2(context)
+	context = context or {}
+
+	if type(context.AuctionLots) == "table" then
+		return context.AuctionLots
+	end
+
+	local auctionGui = context.AuctionGui
+	local auction = auctionGui and findChild(auctionGui, "Auction")
+	local frame = auction and findChild(auction, "Frame")
+	local list = frame and findChild(frame, "ScrollingFrame")
+	local lots = {}
+
+	if not list then
+		return lots
+	end
+
+	for _, lotFrame in ipairs(QueryChildren(list)) do
+		local itemName = findChild(lotFrame, "ItemName", true)
+		local priceLabel = findChild(lotFrame, "TextLabel", true)
+		local outOfStock = findChild(lotFrame, "OUT_OF_STOCK", true)
+		local expired = findChild(lotFrame, "EXPIRED", true)
+
+		if not safeProp(outOfStock, "Visible", false) and not safeProp(expired, "Visible", false) then
+			table.insert(lots, {
+				Id = tostring(safeProp(lotFrame, "Name", "")):gsub("^Lot_", ""),
+				Name = safeProp(itemName, "Text", safeProp(itemName, "ContentText", "")),
+				Price = Reconstructed.Converter.CorrectNumber(safeProp(priceLabel, "ContentText", safeProp(priceLabel, "Text", ""))),
+				Frame = lotFrame,
+			})
+		end
+	end
+
+	return lots
+end
+
+function Reconstructed.AutoBuyAuctionGAG2(context, gagConfig)
+	context = context or {}
+	gagConfig = gagConfig or context.GAGConfig or Reconstructed.GetEffectiveGAGConfig()
+
+	local config = context.Config or Reconstructed.BuildLegacyConfig(gagConfig)
+	if not cfg(config, "Auto Buy Auction", false) then
+		return 0
+	end
+
+	local lots = Reconstructed.GetAuctionLotsGAG2(context)
+	if #lots == 0 then
+		Reconstructed.AuctionPlannerStub(gagConfig, context)
+		return 0
+	end
+
+	local selectedItems, hasFilter = buildSelectedMap(
+		cfg(config, "Select Seed", {}),
+		cfg(config, "Select Gear", {}),
+		cfg(config, "Select Seed Pack", {}),
+		cfg(config, "Select Egg", {})
+	)
+	local priceLimit = tonumber(cfg(config, "Auction Price", 0)) or 0
+	local priceMode = cfg(config, "Auction Price Mode", "Below")
+
+	for _, lot in ipairs(lots) do
+		local lotName = tostring(lot.Name or lot.ItemName or "")
+		local price = tonumber(lot.Price) or 0
+
+		if hasFilter and not selectedItems[lotName] then
+			continue
+		end
+
+		if priceLimit ~= 0 then
+			if priceMode == "Above" and price <= priceLimit then
+				continue
+			end
+
+			if priceMode == "Below" and price >= priceLimit then
+				continue
+			end
+		end
+
+		if Reconstructed.BuyAuctionLotGAG2(context, lot, price) then
+			return 1
+		end
+	end
+
+	return 0
+end
+
+function Reconstructed.CollectFruitPacketGAG2(context, plant, fruitId, options)
+	context = context or {}
+	options = options or {}
+
+	local plantId = getAttr(plant, "PlantId") or getAttr(plant, "Id") or plant
+	local targetFruitId = fruitId or getAttr(plant, "FruitId") or ""
+
+	if not plantId or plantId == "" then
+		return false
+	end
+
+	local success, _, _, attempted = Reconstructed.TryPacketCandidatesGAG2(context, {
+		{
+			Namespaces = { "Plant", "Plants", "Garden", "Fruit", "Harvest" },
+			Aliases = { "CollectFruit", "HarvestFruit", "PickupFruit", "PickFruit", "CollectPlant", "HarvestPlant" },
+			PreferredKind = "Fire",
+		},
+	}, {
+		{ plantId, targetFruitId },
+		{ plantId },
+		{ plant, targetFruitId },
+	}, { Feature = "Collect Fruit Packet", PreferredKind = "Fire" })
+
+	if not attempted then
+		recordPlanner("Collect Fruit Packet", { PlantId = plantId, FruitId = targetFruitId, RuntimePacketRequired = true })
+	end
+
+	return success
+end
+
+function Reconstructed.ShovelPlantGAG2(context, plant, options)
+	context = context or {}
+	options = options or {}
+
+	local plantId = getAttr(plant, "PlantId") or getAttr(plant, "Id") or safeProp(plant, "Name") or plant
+
+	if not plantId or plantId == "" then
+		return false
+	end
+
+	local success, _, _, attempted = Reconstructed.TryPacketCandidatesGAG2(context, {
+		{
+			Namespaces = { "Plant", "Plants", "Garden", "Shovel" },
+			Aliases = { "ShovelPlant", "RemovePlant", "DeletePlant", "DestroyPlant", "DigUpPlant", "Shovel" },
+			PreferredKind = "Fire",
+		},
+	}, {
+		{ plantId },
+		{ plant },
+	}, { Feature = "Shovel Runtime Packet", PreferredKind = "Fire" })
+
+	if not attempted then
+		Reconstructed.ShovelRuntimePacketStub(context.GAGConfig or Reconstructed.GetEffectiveGAGConfig(), context)
+	end
+
+	return success
+end
+
+function Reconstructed.AutoShovelReplaceGAG2(context, gagConfig)
+	context = context or {}
+	gagConfig = gagConfig or context.GAGConfig or Reconstructed.GetEffectiveGAGConfig()
+
+	local planting = section(gagConfig, "Planting")
+	local money = section(gagConfig, "Money")
+	local shovelUpTo = cfg(planting, "Shovel Up To", "")
+	local autoReplace = cfg(money, "Auto Replace Plants", true)
+
+	if not autoReplace and shovelUpTo == "" and not hasSelection(cfg(planting, "Never Shovel", {})) then
+		return 0
+	end
+
+	local plot = context.Plot or Reconstructed.GetOwnerPlot(context)
+	local plantsFolder = Reconstructed.GetPlotPlants(plot)
+	local shoveled = 0
+
+	if not plantsFolder then
+		Reconstructed.ShovelRuntimePacketStub(gagConfig, context)
+		return shoveled
+	end
+
+	local maxRank = shovelUpTo ~= "" and Reconstructed.GAG2SeedRank[shovelUpTo] or nil
+
+	for _, plant in ipairs(QueryChildren(plantsFolder)) do
+		local plantName = getPlantDisplayName(plant) or safeProp(plant, "Name", "")
+		local shouldShovel = false
+
+		if selectionMatches(cfg(planting, "Never Shovel", {}), plantName) then
+			continue
+		end
+
+		if maxRank and Reconstructed.GAG2SeedRank[plantName] and Reconstructed.GAG2SeedRank[plantName] <= maxRank then
+			shouldShovel = true
+		elseif shovelUpTo ~= "" and selectionMatches(shovelUpTo, plantName) then
+			shouldShovel = true
+		elseif autoReplace and selectionMatches(cfg(planting, "Don't Plant", {}), plantName) then
+			shouldShovel = true
+		end
+
+		if shouldShovel and Reconstructed.ShovelPlantGAG2(context, plant) then
+			shoveled = shoveled + 1
+			safeWait(0.25)
+		end
+	end
+
+	return shoveled
+end
+
+function Reconstructed.ExpandPlotGAG2(context, options)
+	context = context or {}
+	options = options or {}
+
+	local plot = context.Plot or Reconstructed.GetOwnerPlot(context)
+	local success, _, _, attempted = Reconstructed.TryPacketCandidatesGAG2(context, {
+		{
+			Namespaces = { "Plot", "Garden", "Farm", "Expansion", "Land" },
+			Aliases = { "ExpandPlot", "BuyPlotExpansion", "PurchasePlotExpansion", "UnlockPlot", "ExpandGarden", "BuyLand" },
+			PreferredKind = "Fire",
+		},
+	}, {
+		{},
+		{ plot },
+		{ options.Level },
+	}, { Feature = "Expand Plot", PreferredKind = "Fire" })
+
+	if not attempted then
+		Reconstructed.ExpandRuntimePacketStub(context.GAGConfig or Reconstructed.GetEffectiveGAGConfig(), context)
+	end
+
+	return success
+end
+
+function Reconstructed.AutoExpandPlotGAG2(context, gagConfig)
+	context = context or {}
+	gagConfig = gagConfig or context.GAGConfig or Reconstructed.GetEffectiveGAGConfig()
+
+	local money = section(gagConfig, "Money")
+	if not cfg(money, "Auto Expand Plot", true) then
+		return false
+	end
+
+	local player = getLocalPlayer(context)
+	local cash = Reconstructed.GetSheckles(player)
+	local keepCash = tonumber(cfg(money, "Keep Cash", 15000)) or 0
+	local expandIfOver = tonumber(cfg(money, "Expand If Over", 1500000)) or 0
+
+	if cash > 0 and (cash < keepCash or cash < expandIfOver) then
+		return false
+	end
+
+	Reconstructed.ExpansionAttemptsGAG2 = Reconstructed.ExpansionAttemptsGAG2 or 0
+	local maxExpansions = tonumber(cfg(money, "Max Expansions", 3)) or 0
+
+	if maxExpansions > 0 and Reconstructed.ExpansionAttemptsGAG2 >= maxExpansions then
+		return false
+	end
+
+	if Reconstructed.ExpandPlotGAG2(context, { Level = Reconstructed.ExpansionAttemptsGAG2 + 1 }) then
+		Reconstructed.ExpansionAttemptsGAG2 = Reconstructed.ExpansionAttemptsGAG2 + 1
+		return true
+	end
+
+	return false
+end
+
 function Reconstructed.SellAllGAG2(context)
 	recordAction("SellAllGAG2", "Networking.NPCS.SellAll", {})
 
@@ -2991,20 +4240,25 @@ function Reconstructed.CreateSimpleGUI(context)
 
 		if not _G.GAG2ReconstructedLoop then
 			_G.GAG2ReconstructedLoop = true
-			task.spawn(function()
-				while _G.GAGRunning do
-					safeCall(function()
-						Reconstructed.RunOnce({
-							Require = require,
-							ExecuteRemotes = true,
-							ExecuteMovement = true,
-							GAGConfig = _G.GAGConfig,
-						})
-					end)
-					safeWait(1)
-				end
+			local spawnFn = task and task.spawn or spawn
+			if type(spawnFn) == "function" then
+				spawnFn(function()
+					while _G.GAGRunning do
+						safeCall(function()
+							Reconstructed.RunOnce({
+								Require = require,
+								ExecuteRemotes = true,
+								ExecuteMovement = true,
+								GAGConfig = _G.GAGConfig,
+							})
+						end)
+						safeWait(1)
+					end
+					_G.GAG2ReconstructedLoop = false
+				end)
+			else
 				_G.GAG2ReconstructedLoop = false
-			end)
+			end
 		end
 	end, Color3.fromRGB(40, 140, 70))
 
@@ -3065,6 +4319,28 @@ function Reconstructed.CreateSimpleGUI(context)
 	makeToggle("Friends", "Auto Send", false)
 	makeToggle("Debug", "Log To File", true)
 	makeToggle("Debug", "Console", true)
+
+	label("Networking Debug")
+	makeButton("SCAN NETWORKING", function()
+		context.Require = context.Require or require
+		local _, dump = Reconstructed.ScanNetworkingGAG2(context)
+		setStatus("Networking entries: " .. tostring(#(dump or {})))
+	end, Color3.fromRGB(70, 95, 135))
+	makeButton("PRINT DUMP", function()
+		context.Require = context.Require or require
+		Reconstructed.PrintDumpGAG2(context)
+		setStatus("Printed dump: " .. tostring(#(Reconstructed.NetworkingDumpGAG2 or {})))
+	end, Color3.fromRGB(70, 95, 135))
+	makeButton("COPY DUMP", function()
+		context.Require = context.Require or require
+		local success = Reconstructed.CopyDumpGAG2(context)
+		setStatus("Copy dump: " .. tostring(success))
+	end, Color3.fromRGB(70, 95, 135))
+	makeButton("SAVE DUMP", function()
+		context.Require = context.Require or require
+		local success, path = Reconstructed.SaveDumpGAG2(context)
+		setStatus("Save dump: " .. tostring(success) .. " " .. tostring(path))
+	end, Color3.fromRGB(70, 95, 135))
 
 	return gui
 end
@@ -3137,13 +4413,13 @@ function Reconstructed.RunOnce(context)
 		Reconstructed.AutoSellPets(config, api, context.ToolManager, context.Player)
 	end
 
-	Reconstructed.SeedShopPlannerStub(gagConfig, context)
-	Reconstructed.GearShopPlannerStub(gagConfig, context)
-	Reconstructed.PetShopPlannerStub(gagConfig, context)
-	Reconstructed.MailPlannerStub(gagConfig, context)
-	Reconstructed.AuctionPlannerStub(gagConfig, context)
-	Reconstructed.ExpandRuntimePacketStub(gagConfig, context)
-	Reconstructed.ShovelRuntimePacketStub(gagConfig, context)
+	Reconstructed.AutoBuySeedsGAG2(context, gagConfig)
+	Reconstructed.AutoBuyGearGAG2(context, gagConfig)
+	Reconstructed.AutoPetsGAG2(context, gagConfig)
+	Reconstructed.AutoMailGAG2(context, gagConfig)
+	Reconstructed.AutoBuyAuctionGAG2(context, gagConfig)
+	Reconstructed.AutoExpandPlotGAG2(context, gagConfig)
+	Reconstructed.AutoShovelReplaceGAG2(context, gagConfig)
 	Reconstructed.EventSeedsStub(gagConfig, context)
 	Reconstructed.MiscStub(gagConfig, context)
 	Reconstructed.FriendsStub(gagConfig, context)
