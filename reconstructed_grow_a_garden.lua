@@ -2821,7 +2821,6 @@ end
 function Reconstructed.CreateSimpleGUI(context)
 	context = context or {}
 
-	local players = getPlayers(context)
 	local player = getLocalPlayer(context)
 	local playerGui = player and findChild(player, "PlayerGui")
 
@@ -2834,6 +2833,8 @@ function Reconstructed.CreateSimpleGUI(context)
 		return existing
 	end
 
+	_G.GAGConfig = Reconstructed.GetEffectiveGAGConfig(_G.GAGConfig)
+
 	local gui = Instance.new("ScreenGui")
 	gui.Name = "GAG2ReconstructedGUI"
 	gui.ResetOnSpawn = false
@@ -2841,11 +2842,24 @@ function Reconstructed.CreateSimpleGUI(context)
 
 	local frame = Instance.new("Frame")
 	frame.Name = "Main"
-	frame.Size = UDim2.fromOffset(260, 260)
-	frame.Position = UDim2.new(0, 20, 0.5, -130)
+	frame.Size = UDim2.fromOffset(330, 520)
+	frame.Position = UDim2.new(0, 20, 0.5, -260)
 	frame.BackgroundColor3 = Color3.fromRGB(24, 24, 28)
 	frame.BorderSizePixel = 0
 	frame.Parent = gui
+
+	local showButton = Instance.new("TextButton")
+	showButton.Name = "ShowButton"
+	showButton.Size = UDim2.fromOffset(90, 30)
+	showButton.Position = UDim2.fromOffset(20, 20)
+	showButton.BackgroundColor3 = Color3.fromRGB(55, 90, 160)
+	showButton.BorderSizePixel = 0
+	showButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+	showButton.Font = Enum.Font.SourceSansBold
+	showButton.TextSize = 14
+	showButton.Text = "SHOW GUI"
+	showButton.Visible = false
+	showButton.Parent = gui
 
 	local title = Instance.new("TextLabel")
 	title.Name = "Title"
@@ -2855,7 +2869,7 @@ function Reconstructed.CreateSimpleGUI(context)
 	title.TextColor3 = Color3.fromRGB(255, 255, 255)
 	title.Font = Enum.Font.SourceSansBold
 	title.TextSize = 18
-	title.Text = "GAG2 Reconstructed"
+	title.Text = "GAG2 Autofarm Config"
 	title.Parent = frame
 
 	local status = Instance.new("TextLabel")
@@ -2865,31 +2879,115 @@ function Reconstructed.CreateSimpleGUI(context)
 	status.BackgroundTransparency = 1
 	status.TextColor3 = Color3.fromRGB(200, 200, 200)
 	status.Font = Enum.Font.SourceSans
-	status.TextSize = 16
+	status.TextSize = 15
 	status.TextXAlignment = Enum.TextXAlignment.Left
 	status.Text = "Status: stopped"
 	status.Parent = frame
 
-	local function makeButton(text, y, callback)
+	local scroll = Instance.new("ScrollingFrame")
+	scroll.Name = "Controls"
+	scroll.Size = UDim2.new(1, -20, 1, -72)
+	scroll.Position = UDim2.fromOffset(10, 68)
+	scroll.BackgroundTransparency = 1
+	scroll.BorderSizePixel = 0
+	scroll.ScrollBarThickness = 6
+	scroll.CanvasSize = UDim2.fromOffset(0, 0)
+	scroll.Parent = frame
+
+	local y = 0
+
+	local function setStatus(text)
+		status.Text = text
+	end
+
+	local function getConfigSection(sectionName)
+		_G.GAGConfig = Reconstructed.GetEffectiveGAGConfig(_G.GAGConfig)
+		return section(_G.GAGConfig, sectionName)
+	end
+
+	local function bump(amount)
+		y = y + amount
+		scroll.CanvasSize = UDim2.fromOffset(0, y + 20)
+	end
+
+	local function label(text)
+		local item = Instance.new("TextLabel")
+		item.Size = UDim2.new(1, -6, 0, 24)
+		item.Position = UDim2.fromOffset(0, y)
+		item.BackgroundTransparency = 1
+		item.TextColor3 = Color3.fromRGB(255, 220, 120)
+		item.Font = Enum.Font.SourceSansBold
+		item.TextSize = 15
+		item.TextXAlignment = Enum.TextXAlignment.Left
+		item.Text = text
+		item.Parent = scroll
+		bump(26)
+		return item
+	end
+
+	local function makeButton(text, callback, color)
 		local button = Instance.new("TextButton")
-		button.Size = UDim2.new(1, -20, 0, 32)
-		button.Position = UDim2.fromOffset(10, y)
-		button.BackgroundColor3 = Color3.fromRGB(55, 90, 160)
+		button.Size = UDim2.new(1, -6, 0, 30)
+		button.Position = UDim2.fromOffset(0, y)
+		button.BackgroundColor3 = color or Color3.fromRGB(55, 90, 160)
 		button.BorderSizePixel = 0
 		button.TextColor3 = Color3.fromRGB(255, 255, 255)
 		button.Font = Enum.Font.SourceSansBold
-		button.TextSize = 16
+		button.TextSize = 15
 		button.Text = text
-		button.Parent = frame
+		button.Parent = scroll
 		button.MouseButton1Click:Connect(callback)
+		bump(34)
 		return button
 	end
 
-	makeButton("START", 72, function()
+	local function makeToggle(sectionName, key, default)
+		local button
+		local function refresh()
+			local target = getConfigSection(sectionName)
+			button.Text = sectionName .. "." .. key .. ": " .. tostring(cfg(target, key, default))
+		end
+		button = makeButton("", function()
+			local target = getConfigSection(sectionName)
+			target[key] = not cfg(target, key, default)
+			refresh()
+			setStatus(key .. " = " .. tostring(target[key]))
+		end, Color3.fromRGB(50, 70, 115))
+		refresh()
+		return button
+	end
+
+	local function makeNumber(sectionName, key, default)
+		local box = Instance.new("TextBox")
+		box.Size = UDim2.new(1, -6, 0, 30)
+		box.Position = UDim2.fromOffset(0, y)
+		box.BackgroundColor3 = Color3.fromRGB(35, 35, 42)
+		box.BorderSizePixel = 0
+		box.TextColor3 = Color3.fromRGB(255, 255, 255)
+		box.Font = Enum.Font.SourceSans
+		box.TextSize = 15
+		box.ClearTextOnFocus = false
+		box.TextXAlignment = Enum.TextXAlignment.Left
+		box.Text = sectionName .. "." .. key .. " = " .. tostring(cfg(getConfigSection(sectionName), key, default))
+		box.Parent = scroll
+		box.FocusLost:Connect(function()
+			local number = tonumber(box.Text:match("%-?%d+%.?%d*"))
+			if number ~= nil then
+				local target = getConfigSection(sectionName)
+				target[key] = number
+				box.Text = sectionName .. "." .. key .. " = " .. tostring(number)
+				setStatus(key .. " = " .. tostring(number))
+			end
+		end)
+		bump(34)
+		return box
+	end
+
+	makeButton("START FARM", function()
 		_G.GAGRunning = true
 		Reconstructed.ExecuteRemotes = true
 		Reconstructed.ExecuteMovement = true
-		status.Text = "Status: running"
+		setStatus("Status: running")
 
 		if not _G.GAG2ReconstructedLoop then
 			_G.GAG2ReconstructedLoop = true
@@ -2908,30 +3006,65 @@ function Reconstructed.CreateSimpleGUI(context)
 				_G.GAG2ReconstructedLoop = false
 			end)
 		end
-	end)
+	end, Color3.fromRGB(40, 140, 70))
 
-	makeButton("STOP", 110, function()
+	makeButton("STOP FARM", function()
 		_G.GAGRunning = false
-		status.Text = "Status: stopped"
+		setStatus("Status: stopped")
+	end, Color3.fromRGB(150, 55, 55))
+
+	makeButton("HIDE GUI", function()
+		frame.Visible = false
+		showButton.Visible = true
+	end, Color3.fromRGB(80, 80, 90))
+
+	showButton.MouseButton1Click:Connect(function()
+		frame.Visible = true
+		showButton.Visible = false
 	end)
 
-	makeButton("Harvest: toggle", 148, function()
-		_G.GAGConfig = Reconstructed.GetEffectiveGAGConfig(_G.GAGConfig)
-		local harvest = section(_G.GAGConfig, "Harvest")
-		harvest["Auto Harvest"] = not cfg(harvest, "Auto Harvest", true)
-		status.Text = "Harvest: " .. tostring(harvest["Auto Harvest"])
-	end)
+	label("Harvest")
+	makeToggle("Harvest", "Auto Harvest", true)
+	makeNumber("Harvest", "Sell At", 85)
+	makeNumber("Harvest", "Sell Every", 40)
 
-	makeButton("Plant: toggle", 186, function()
-		_G.GAGConfig = Reconstructed.GetEffectiveGAGConfig(_G.GAGConfig)
-		local planting = section(_G.GAGConfig, "Planting")
-		planting["Auto Plant"] = not cfg(planting, "Auto Plant", true)
-		status.Text = "Plant: " .. tostring(planting["Auto Plant"])
-	end)
+	label("Planting")
+	makeToggle("Planting", "Auto Plant", true)
+	makeNumber("Planting", "Plant Limit", 0)
 
-	makeButton("Hide GUI", 224, function()
-		gui.Enabled = false
-	end)
+	label("Money / Replace")
+	makeToggle("Money", "Auto Expand Plot", true)
+	makeToggle("Money", "Auto Replace Plants", true)
+	makeNumber("Money", "Keep Cash", 15000)
+	makeNumber("Money", "Expand If Over", 1500000)
+
+	label("Pets / Gear / Event / Mail")
+	makeToggle("Pets", "Auto Buy Slots", true)
+	makeToggle("Gear", "Auto Buy", true)
+	makeToggle("Event Seeds", "Auto Claim", true)
+	makeToggle("Mail", "Auto Claim", true)
+
+	label("Misc")
+	makeToggle("Misc", "Auto Return To Garden", true)
+	makeToggle("Misc", "Teleport", true)
+	makeToggle("Misc", "Fast Travel", true)
+	makeToggle("Misc", "Hide Game UI", false)
+	makeNumber("Misc", "Walk Speed", 35)
+	makeNumber("Misc", "Slide Speed", 35)
+
+	label("Performance")
+	makeToggle("Performance", "Low Graphics", true)
+	makeToggle("Performance", "Remove Other Gardens", true)
+	makeToggle("Performance", "Hide Crop Visuals", true)
+	makeToggle("Performance", "Hide Fruit Visuals", true)
+	makeToggle("Performance", "Hide Players", true)
+	makeNumber("Performance", "FPS Cap", 0)
+
+	label("Friends / Debug")
+	makeToggle("Friends", "Auto Accept", false)
+	makeToggle("Friends", "Auto Send", false)
+	makeToggle("Debug", "Log To File", true)
+	makeToggle("Debug", "Console", true)
 
 	return gui
 end
