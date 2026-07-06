@@ -6,6 +6,8 @@ Reconstructed.ActionLog = {}
 Reconstructed.ConsoleLog = {}
 Reconstructed.LogFileBufferGAG2 = ""
 Reconstructed.LastMailSendTimeGAG2 = 0
+Reconstructed.LastDailyDealKeyGAG2 = nil
+Reconstructed.FriendRequestConnectionGAG2 = nil
 
 Reconstructed.DefaultGAGConfig = {
 	["Harvest"] = {
@@ -779,6 +781,9 @@ function Reconstructed.EmitRemote(api, remoteName, ...)
 		local success, result = safeCall(fire, remoteName, ...)
 
 		if success then
+			if result == nil then
+				return true
+			end
 			return result
 		end
 	end
@@ -1115,6 +1120,7 @@ function Reconstructed.ValidateGAGConfig(gagConfig)
 	expect("Planting", "Layout", "string")
 	expect("Money", "Keep Cash", "number")
 	expect("Pets", "Auto Buy Slots", "boolean")
+	expect("Pets", "Max Pet Slots", "number")
 	expect("Gear", "Auto Buy", "boolean")
 	expect("Gear", "Keep Cash", "number")
 	expect("Mail", "Send To", "string")
@@ -3442,9 +3448,159 @@ function Reconstructed.EquipPetGAG2(context, petOrId, options)
 	return success
 end
 
+function Reconstructed.RequestGetEquippedPetsGAG2(context)
+	context = context or {}
+
+	if context.EquippedPets ~= nil then
+		return context.EquippedPets
+	end
+
+	if context.EquippedPetsCacheGAG2 ~= nil then
+		return context.EquippedPetsCacheGAG2
+	end
+
+	local confirmedSuccess, confirmedResult = Reconstructed.CallConfirmedPacketGAG2(context, "Pets.GetEquippedPets", {}, "Pet Equipped State")
+	if confirmedSuccess then
+		context.EquippedPetsCacheGAG2 = confirmedResult
+		return confirmedResult
+	end
+
+	local success, result, _, attempted = Reconstructed.TryPacketCandidatesGAG2(context, {
+		{
+			Namespaces = { "Pets", "Pet", "Inventory" },
+			Aliases = { "RequestGetEquippedPets", "GetEquippedPets", "GetEquipped", "GetEquippedPetState", "RequestEquippedPets" },
+			PreferredKind = "Invoke",
+		},
+	}, { {} }, { Feature = "Pet Equipped State", PreferredKind = "Invoke" })
+
+	if success then
+		context.EquippedPetsCacheGAG2 = result
+		return result
+	elseif not attempted then
+		recordPlanner("Pet Equipped State", { RuntimePacketRequired = true })
+	end
+
+	return nil
+end
+
+local function countPetTableGAG2(value)
+	local count = 0
+
+	if type(value) ~= "table" then
+		return nil
+	end
+
+	for key, child in pairs(value) do
+		if type(key) == "number" and child ~= nil and child ~= false then
+			count = count + 1
+		elseif type(child) == "table" then
+			local equipped = child.Equipped or child.IsEquipped or child.equipped or child.isEquipped
+			if equipped == true or equipped == nil then
+				count = count + 1
+			end
+		elseif child == true then
+			count = count + 1
+		end
+	end
+
+	return count
+end
+
+local function petSlotsFromTableGAG2(value)
+	if type(value) ~= "table" then
+		return nil
+	end
+
+	for _, key in ipairs({ "MaxSlots", "MaxPetSlots", "PetSlots", "Slots", "UnlockedSlots", "EquippedSlots", "SlotCount", "MaxEquipped" }) do
+		local number = tonumber(value[key])
+		if number then
+			return number
+		end
+	end
+
+	return nil
+end
+
+function Reconstructed.GetEquippedPetsCountGAG2(context)
+	context = context or {}
+
+	local result = Reconstructed.RequestGetEquippedPetsGAG2(context)
+	local count = nil
+	local slots = nil
+	local source = nil
+
+	if type(result) == "table" then
+		slots = petSlotsFromTableGAG2(result)
+		for _, key in ipairs({ "EquippedPets", "Equipped", "Pets", "Data" }) do
+			local child = result[key]
+			local childCount = countPetTableGAG2(child)
+			if childCount ~= nil then
+				count = childCount
+				slots = slots or petSlotsFromTableGAG2(child)
+				source = "RequestGetEquippedPets"
+				break
+			end
+		end
+
+		if count == nil then
+			count = countPetTableGAG2(result)
+			if count ~= nil then
+				source = "RequestGetEquippedPets"
+			end
+		end
+	end
+
+	local player = getLocalPlayer(context)
+	if slots == nil then
+		for _, key in ipairs({ "MaxPetSlots", "PetSlots", "EquippedPetSlots", "UnlockedPetSlots" }) do
+			local number = tonumber(getAttr(player, key)) or tonumber(safeProp(player, key))
+			if number then
+				slots = number
+				source = source or "PlayerAttribute"
+				break
+			end
+		end
+	end
+
+	if count == nil then
+		local equipped = 0
+		local known = false
+		for _, tool in ipairs(Reconstructed.GetAllTool(player)) do
+			if getAttr(tool, "PetName") or getAttr(tool, "PetId") or getAttr(tool, "PetUUID") then
+				local isEquipped = getAttr(tool, "IsEquipped") or getAttr(tool, "Equipped") or getAttr(tool, "PetEquipped") or getAttr(tool, "EquippedSlot")
+				if isEquipped ~= nil and isEquipped ~= false then
+					equipped = equipped + 1
+					known = true
+				end
+			end
+		end
+
+		if known then
+			count = equipped
+			source = source or "ToolAttributes"
+		end
+	end
+
+	return count, slots, count ~= nil or slots ~= nil, source
+end
+
 function Reconstructed.BuyPetSlotGAG2(context, options)
 	context = context or {}
 	options = options or {}
+
+	local maxSlots = tonumber(options.MaxSlots) or 0
+	if maxSlots > 0 then
+		local equippedCount, slotCount, known, source = Reconstructed.GetEquippedPetsCountGAG2(context)
+		if slotCount == nil then
+			recordPlanner("Pet Slot Count Unknown", { EquippedPets = equippedCount, MaxPetSlots = maxSlots, Source = source, KnownAnyState = known, FailClosed = true })
+			return false
+		end
+
+		if slotCount >= maxSlots then
+			recordPlanner("Pet Slots Max Guard", { EquippedPets = equippedCount, SlotCount = slotCount, MaxPetSlots = maxSlots, Source = source })
+			return false
+		end
+	end
 
 	local confirmedSuccess = Reconstructed.CallConfirmedPacketGAG2(context, "Pets.RequestPurchasePetSlot", {}, "Pet Slots")
 	if confirmedSuccess then
@@ -4148,8 +4304,8 @@ function Reconstructed.SellAllGAG2(context)
 	return false
 end
 
-function Reconstructed.GetHarvestedInventoryCount(player)
-	local total = 0
+function Reconstructed.GetHarvestedInventoryToolsGAG2(player)
+	local tools = {}
 	local sources = {
 		Reconstructed.GetBackpack(player),
 		player and player.Character,
@@ -4159,12 +4315,174 @@ function Reconstructed.GetHarvestedInventoryCount(player)
 		for _, item in ipairs(QueryChildren(source)) do
 			local itemName = safeProp(item, "Name", "")
 			if isA(item, "Tool") and (getAttr(item, "HarvestedFruit") or itemName:find("%[.-kg%]")) then
-				total = total + 1
+				table.insert(tools, item)
 			end
 		end
 	end
 
-	return total
+	return tools
+end
+
+function Reconstructed.GetHarvestedInventoryCount(player)
+	return #Reconstructed.GetHarvestedInventoryToolsGAG2(player)
+end
+
+function Reconstructed.GetInventoryFruitNameGAG2(tool)
+	return getAttr(tool, "CorePartName")
+		or getAttr(tool, "FruitName")
+		or getAttr(tool, "SeedName")
+		or getAttr(tool, "ItemName")
+		or getAttr(tool, "DisplayName")
+		or getAttr(tool, "Name")
+		or safeProp(tool, "Name")
+end
+
+function Reconstructed.GetInventoryMutationGAG2(tool)
+	local mutation = getAttr(tool, "Mutation") or getAttr(tool, "Variant") or getAttr(tool, "Mutations")
+
+	if mutation ~= nil and mutation ~= "" then
+		return mutation
+	end
+
+	local mutationChild = findChild(tool, "Mutation", true) or findChild(tool, "Mutated", true) or findChild(tool, "Variant", true)
+	local value = getValueObjectValue(mutationChild)
+
+	if value ~= nil then
+		return value
+	end
+
+	return safeProp(mutationChild, "Name")
+end
+
+function Reconstructed.NeverSellMatchesInventoryGAG2(tool, gagConfig)
+	gagConfig = gagConfig or Reconstructed.GetEffectiveGAGConfig()
+
+	if getAttr(tool, "IsFavorite") then
+		return true, "IsFavorite"
+	end
+
+	local neverSell = section(gagConfig, "Never Sell")
+	local fruitName = Reconstructed.GetInventoryFruitNameGAG2(tool)
+	local mutation = Reconstructed.GetInventoryMutationGAG2(tool)
+	local toolName = safeProp(tool, "Name", "")
+
+	if selectionMatches(cfg(neverSell, "By Fruit", {}), fruitName) or selectionMatches(cfg(neverSell, "By Fruit", {}), toolName) then
+		return true, "By Fruit"
+	end
+
+	if selectionMatches(cfg(neverSell, "By Mutation", {}), mutation) or selectionMatches(cfg(neverSell, "By Mutation", {}), toolName) then
+		return true, "By Mutation"
+	end
+
+	local exact = cfg(neverSell, "Exact", {})
+	if type(exact) == "string" then
+		if exact ~= "" and exact ~= "None" and (toolName == exact or fruitName == exact) then
+			return true, "Exact"
+		end
+	elseif type(exact) == "table" then
+		for key, entry in pairs(exact) do
+			if type(entry) == "string" and entry ~= "" and entry ~= "None" then
+				if toolName == entry or fruitName == entry then
+					return true, "Exact"
+				end
+			elseif type(entry) == "table" then
+				local fruit = entry.fruit or entry.Fruit or entry[1]
+				local mut = entry.mut or entry.Mutation or entry[2]
+
+				if fruit and (fruitName == tostring(fruit) or toolName == tostring(fruit) or tostring(toolName):find(tostring(fruit), 1, true)) and (not mut or tostring(mutation) == tostring(mut) or tostring(toolName):find(tostring(mut), 1, true)) then
+					return true, "Exact"
+				end
+			elseif isTruthySelectionValue(key, entry) and (toolName == tostring(key) or fruitName == tostring(key)) then
+				return true, "Exact"
+			end
+		end
+	end
+
+	return false, nil
+end
+
+function Reconstructed.HasProtectedInventoryGAG2(context, gagConfig)
+	context = context or {}
+	gagConfig = gagConfig or context.GAGConfig or Reconstructed.GetEffectiveGAGConfig()
+
+	local protected = {}
+	for _, tool in ipairs(Reconstructed.GetHarvestedInventoryToolsGAG2(getLocalPlayer(context))) do
+		local matched, reason = Reconstructed.NeverSellMatchesInventoryGAG2(tool, gagConfig)
+		if matched then
+			table.insert(protected, {
+				Name = safeProp(tool, "Name", ""),
+				Fruit = Reconstructed.GetInventoryFruitNameGAG2(tool),
+				Mutation = Reconstructed.GetInventoryMutationGAG2(tool),
+				Reason = reason,
+			})
+		end
+	end
+
+	return #protected > 0, protected
+end
+
+function Reconstructed.GetDailyDealKeyGAG2()
+	if os and os.date then
+		local success, key = safeCall(os.date, "%Y-%m-%d")
+		if success and key then
+			return key
+		end
+	end
+
+	return "session"
+end
+
+function Reconstructed.AutoDailyDealGAG2(context, gagConfig)
+	context = context or {}
+	gagConfig = gagConfig or context.GAGConfig or Reconstructed.GetEffectiveGAGConfig()
+
+	local misc = section(gagConfig, "Misc")
+	local harvest = section(gagConfig, "Harvest")
+	if not cfg(misc, "Auto Daily Deal", true) or not cfg(harvest, "Auto Harvest", true) then
+		return false
+	end
+
+	local player = getLocalPlayer(context)
+	local harvestedTools = Reconstructed.GetHarvestedInventoryToolsGAG2(player)
+	if #harvestedTools <= 0 then
+		return false
+	end
+
+	local dayKey = Reconstructed.GetDailyDealKeyGAG2()
+	if Reconstructed.LastDailyDealKeyGAG2 == dayKey then
+		return false
+	end
+
+	local now = os and os.time and os.time() or 0
+	if now > 0 and Reconstructed.LastDailyDealAttemptTimeGAG2 and now - Reconstructed.LastDailyDealAttemptTimeGAG2 < 60 then
+		return false
+	end
+
+	local api = context.Api or Reconstructed.CreateDefaultApi()
+	for _, tool in ipairs(harvestedTools) do
+		local protected = Reconstructed.NeverSellMatchesInventoryGAG2(tool, gagConfig)
+		local fruitId = getAttr(tool, "Id")
+
+		if not protected and fruitId then
+			Reconstructed.LastDailyDealAttemptTimeGAG2 = now
+			local previousExecuteRemotes = Reconstructed.ExecuteRemotes
+			if context.ExecuteRemotes ~= nil then
+				Reconstructed.ExecuteRemotes = context.ExecuteRemotes == true
+			end
+			local result = Reconstructed.EmitRemote(api, "UseDailyDealSingle", randomNonce(), fruitId)
+			Reconstructed.ExecuteRemotes = previousExecuteRemotes
+			if result then
+				Reconstructed.LastDailyDealKeyGAG2 = dayKey
+			elseif not shouldExecuteRemotes(context) then
+				recordPlanner("Auto Daily Deal", { FruitId = fruitId, ExecuteRemotes = false })
+			end
+			return result
+		end
+	end
+
+	Reconstructed.LastDailyDealAttemptTimeGAG2 = now
+	recordPlanner("Auto Daily Deal", { HarvestedInventory = #harvestedTools, EligibleFruitIdMissing = true })
+	return false
 end
 
 function Reconstructed.ShouldSellGAG(gagConfig, context)
@@ -4404,7 +4722,20 @@ function Reconstructed.PlantAllGAG2(context, gagConfig)
 	local plot = context.Plot or Reconstructed.GetOwnerPlot(context)
 	local plantsFolder = Reconstructed.GetPlotPlants(plot)
 	local seeds = Reconstructed.GetPlantableSeedsGAG(player, gagConfig)
-	local positions = Reconstructed.GetPlantAreaPositionsGAG(plot)
+	local layout = tostring(cfg(planting, "Layout", "compact")):lower()
+	local spacing = 6
+
+	if layout == "compact" or layout == "tight" then
+		spacing = 4
+	elseif layout == "spread" or layout == "wide" then
+		spacing = 10
+	elseif layout == "balanced" or layout == "normal" then
+		spacing = 6
+	else
+		spacing = tonumber(cfg(planting, "Spacing", 6)) or 6
+	end
+
+	local positions = Reconstructed.GetPlantAreaPositionsGAG(plot, spacing)
 	local plantLimit = tonumber(cfg(planting, "Plant Limit", 0)) or 0
 	local planted = 0
 
@@ -5202,12 +5533,125 @@ function Reconstructed.MiscStub(gagConfig, context)
 	}
 end
 
-function Reconstructed.FriendsStub(gagConfig, context)
-	local friends = section(gagConfig, "Friends")
+function Reconstructed.AutoFriendsGAG2(context, gagConfig)
+	context = context or {}
+	gagConfig = gagConfig or context.GAGConfig or Reconstructed.GetEffectiveGAGConfig()
 
-	if cfg(friends, "Auto Accept", false) or cfg(friends, "Auto Send", false) then
-		Reconstructed.RecordStub("Friends", friends)
+	local friends = section(gagConfig, "Friends")
+	local autoAccept = cfg(friends, "Auto Accept", false)
+	local autoSend = cfg(friends, "Auto Send", false)
+	local acted = 0
+
+	if not autoAccept and not autoSend then
+		return acted
 	end
+
+	local players = getPlayers(context)
+	local localPlayer = getLocalPlayer(context)
+	if not players or not localPlayer then
+		recordPlanner("Friends", { PlayersUnavailable = true, Config = friends })
+		return acted
+	end
+
+	if not shouldExecuteRemotes(context) then
+		recordPlanner("Friends", { ExecuteRemotes = false, Config = friends })
+		return acted
+	end
+
+	if autoAccept then
+		local event = safeProp(localPlayer, "FriendRequestEvent")
+		local connect = safeProp(event, "Connect")
+		if Reconstructed.FriendRequestConnectionGAG2 then
+			acted = acted + 1
+		elseif type(connect) == "function" then
+			local success, connection = safeCall(function()
+				return event:Connect(function(requester)
+					recordAction("FriendsAutoAccept", safeProp(requester, "Name", requester), {})
+					local accept = safeProp(requester, "Accept") or safeProp(requester, "AcceptFriendRequest")
+					if type(accept) == "function" then
+						safeCall(function()
+							return accept(requester)
+						end)
+					end
+				end)
+			end)
+
+			if success then
+				Reconstructed.FriendRequestConnectionGAG2 = connection or true
+				acted = acted + 1
+			end
+		else
+			recordPlanner("Friends Auto Accept", { SafeAPIUnavailable = true, Expected = "LocalPlayer.FriendRequestEvent" })
+		end
+	end
+
+	if autoSend then
+		local now = os and os.time and os.time() or 0
+		if now > 0 and Reconstructed.LastFriendSendAttemptTimeGAG2 and now - Reconstructed.LastFriendSendAttemptTimeGAG2 < 60 then
+			recordPlanner("Friends Auto Send", { Throttled = true, Remaining = 60 - (now - Reconstructed.LastFriendSendAttemptTimeGAG2) })
+			return acted
+		end
+
+		local getPlayersMethod = safeProp(players, "GetPlayers")
+		local requestOwner = localPlayer
+		local requestFriendship = safeProp(localPlayer, "RequestFriendship")
+		if type(requestFriendship) ~= "function" then
+			requestOwner = players
+			requestFriendship = safeProp(players, "RequestFriendship")
+		end
+		local targets = {}
+
+		if type(getPlayersMethod) == "function" then
+			local success, result = safeCall(function()
+				return players:GetPlayers()
+			end)
+			if success then
+				targets = toList(result)
+			end
+		end
+
+		if type(requestFriendship) == "function" and #targets > 0 then
+			for _, target in ipairs(targets) do
+				if target ~= localPlayer then
+					local alreadyFriends = false
+					local isFriendsWith = safeProp(localPlayer, "IsFriendsWith")
+					if type(isFriendsWith) == "function" then
+						local success, result = safeCall(function()
+							return localPlayer:IsFriendsWith(safeProp(target, "UserId"))
+						end)
+						alreadyFriends = success and result == true
+					end
+
+					if not alreadyFriends then
+						Reconstructed.LastFriendSendAttemptTimeGAG2 = now
+						recordAction("FriendsAutoSend", safeProp(target, "Name", "Player"), {})
+						local success = false
+						if requestOwner == localPlayer then
+							success = safeCall(function()
+								return requestFriendship(localPlayer, target)
+							end)
+						else
+							success = safeCall(function()
+								return requestFriendship(players, localPlayer, target)
+							end)
+						end
+						if success then
+							acted = acted + 1
+						end
+						break
+					end
+				end
+			end
+		else
+			recordPlanner("Friends Auto Send", { SafeAPIUnavailable = true, Expected = "Players/LocalPlayer.RequestFriendship", TargetCount = #targets })
+		end
+	end
+
+	return acted
+end
+
+function Reconstructed.FriendsStub(gagConfig, context)
+	return Reconstructed.AutoFriendsGAG2(context, gagConfig)
 end
 
 function Reconstructed.PerformanceStub(gagConfig, context)
@@ -5552,6 +5996,33 @@ function Reconstructed.CreateSimpleGUI(context)
 		return box
 	end
 
+	local function makeText(sectionName, key, default)
+		local box = Instance.new("TextBox")
+		box.Size = UDim2.new(1, -6, 0, 30)
+		box.Position = UDim2.fromOffset(0, y)
+		box.BackgroundColor3 = Color3.fromRGB(35, 35, 42)
+		box.BorderSizePixel = 0
+		box.TextColor3 = Color3.fromRGB(255, 255, 255)
+		box.Font = Enum.Font.SourceSans
+		box.TextSize = 15
+		box.ClearTextOnFocus = false
+		box.TextXAlignment = Enum.TextXAlignment.Left
+		box.Text = sectionName .. "." .. key .. " = " .. tostring(cfg(getConfigSection(sectionName), key, default))
+		box.Parent = scroll
+		box.FocusLost:Connect(function()
+			local value = box.Text:match("= *(.*)$") or box.Text
+			value = tostring(value or ""):gsub("^%s+", ""):gsub("%s+$", "")
+			if value ~= "" then
+				local target = getConfigSection(sectionName)
+				target[key] = value
+				box.Text = sectionName .. "." .. key .. " = " .. tostring(value)
+				setStatus(key .. " = " .. tostring(value))
+			end
+		end)
+		bump(34)
+		return box
+	end
+
 	makeButton("START FARM", function()
 		_G.GAGRunning = true
 		Reconstructed.ExecuteRemotes = true
@@ -5623,6 +6094,7 @@ function Reconstructed.CreateSimpleGUI(context)
 
 	label("Planting")
 	makeToggle("Planting", "Auto Plant", true)
+	makeText("Planting", "Layout", "compact")
 	makeNumber("Planting", "Plant Limit", 0)
 
 	label("Money / Replace")
@@ -5633,6 +6105,7 @@ function Reconstructed.CreateSimpleGUI(context)
 
 	label("Pets / Gear / Event / Mail")
 	makeToggle("Pets", "Auto Buy Slots", true)
+	makeNumber("Pets", "Max Pet Slots", 6)
 	makeToggle("Gear", "Auto Buy", true)
 	makeNumber("Gear", "Keep Cash", 15000)
 	makeToggle("Event Seeds", "Auto Claim", true)
@@ -5641,6 +6114,7 @@ function Reconstructed.CreateSimpleGUI(context)
 
 	label("Misc")
 	makeToggle("Misc", "Auto Return To Garden", true)
+	makeToggle("Misc", "Auto Daily Deal", true)
 	makeToggle("Misc", "Show Stats", true)
 	makeToggle("Misc", "Show Console", false)
 	makeToggle("Misc", "Teleport", true)
@@ -5787,9 +6261,15 @@ function Reconstructed.RunOnce(context)
 	Reconstructed.ApplyPerformanceGAG(context, gagConfig)
 	Reconstructed.HarvestAllByPrompt(context, gagConfig)
 	Reconstructed.CollectDroppedFruitGAG(context)
+	Reconstructed.AutoDailyDealGAG2(context, gagConfig)
 
 	if Reconstructed.ShouldSellGAG(gagConfig, context) then
-		Reconstructed.SellAllGAG2(context)
+		local hasProtected, protected = Reconstructed.HasProtectedInventoryGAG2(context, gagConfig)
+		if hasProtected then
+			recordPlanner("Never Sell SellAll Guard", { Protected = protected })
+		else
+			Reconstructed.SellAllGAG2(context)
+		end
 	end
 
 	Reconstructed.PlantAllGAG2(context, gagConfig)
@@ -5800,7 +6280,12 @@ function Reconstructed.RunOnce(context)
 		end
 
 		if context.PlayerStats then
-			Reconstructed.AutoSellAll(config, api, context.Inventory, context.PlayerStats, context.CanSellByMultiplier)
+			local hasProtected, protected = Reconstructed.HasProtectedInventoryGAG2(context, gagConfig)
+			if hasProtected then
+				recordPlanner("Never Sell SellAll Guard", { Protected = protected, LegacyLayer = true })
+			else
+				Reconstructed.AutoSellAll(config, api, context.Inventory, context.PlayerStats, context.CanSellByMultiplier)
+			end
 			Reconstructed.AutoSellFruit(config, context.CanSellByMultiplier, context.PlayerStats, api, context.ToolManager, context.Player)
 		end
 
