@@ -2818,6 +2818,144 @@ function Reconstructed.DebugStub(gagConfig, context)
 	Reconstructed.RecordStub("Debug", debugConfig)
 end
 
+function Reconstructed.CreateSimpleGUI(context)
+	context = context or {}
+
+	local players = getPlayers(context)
+	local player = getLocalPlayer(context)
+	local playerGui = player and findChild(player, "PlayerGui")
+
+	if not playerGui or not Instance then
+		return nil
+	end
+
+	local existing = findChild(playerGui, "GAG2ReconstructedGUI")
+	if existing then
+		return existing
+	end
+
+	local gui = Instance.new("ScreenGui")
+	gui.Name = "GAG2ReconstructedGUI"
+	gui.ResetOnSpawn = false
+	gui.Parent = playerGui
+
+	local frame = Instance.new("Frame")
+	frame.Name = "Main"
+	frame.Size = UDim2.fromOffset(260, 260)
+	frame.Position = UDim2.new(0, 20, 0.5, -130)
+	frame.BackgroundColor3 = Color3.fromRGB(24, 24, 28)
+	frame.BorderSizePixel = 0
+	frame.Parent = gui
+
+	local title = Instance.new("TextLabel")
+	title.Name = "Title"
+	title.Size = UDim2.new(1, 0, 0, 34)
+	title.BackgroundColor3 = Color3.fromRGB(40, 40, 48)
+	title.BorderSizePixel = 0
+	title.TextColor3 = Color3.fromRGB(255, 255, 255)
+	title.Font = Enum.Font.SourceSansBold
+	title.TextSize = 18
+	title.Text = "GAG2 Reconstructed"
+	title.Parent = frame
+
+	local status = Instance.new("TextLabel")
+	status.Name = "Status"
+	status.Size = UDim2.new(1, -20, 0, 24)
+	status.Position = UDim2.fromOffset(10, 40)
+	status.BackgroundTransparency = 1
+	status.TextColor3 = Color3.fromRGB(200, 200, 200)
+	status.Font = Enum.Font.SourceSans
+	status.TextSize = 16
+	status.TextXAlignment = Enum.TextXAlignment.Left
+	status.Text = "Status: stopped"
+	status.Parent = frame
+
+	local function makeButton(text, y, callback)
+		local button = Instance.new("TextButton")
+		button.Size = UDim2.new(1, -20, 0, 32)
+		button.Position = UDim2.fromOffset(10, y)
+		button.BackgroundColor3 = Color3.fromRGB(55, 90, 160)
+		button.BorderSizePixel = 0
+		button.TextColor3 = Color3.fromRGB(255, 255, 255)
+		button.Font = Enum.Font.SourceSansBold
+		button.TextSize = 16
+		button.Text = text
+		button.Parent = frame
+		button.MouseButton1Click:Connect(callback)
+		return button
+	end
+
+	makeButton("START", 72, function()
+		_G.GAGRunning = true
+		Reconstructed.ExecuteRemotes = true
+		Reconstructed.ExecuteMovement = true
+		status.Text = "Status: running"
+
+		if not _G.GAG2ReconstructedLoop then
+			_G.GAG2ReconstructedLoop = true
+			task.spawn(function()
+				while _G.GAGRunning do
+					safeCall(function()
+						Reconstructed.RunOnce({
+							Require = require,
+							ExecuteRemotes = true,
+							ExecuteMovement = true,
+							GAGConfig = _G.GAGConfig,
+						})
+					end)
+					safeWait(1)
+				end
+				_G.GAG2ReconstructedLoop = false
+			end)
+		end
+	end)
+
+	makeButton("STOP", 110, function()
+		_G.GAGRunning = false
+		status.Text = "Status: stopped"
+	end)
+
+	makeButton("Harvest: toggle", 148, function()
+		_G.GAGConfig = Reconstructed.GetEffectiveGAGConfig(_G.GAGConfig)
+		local harvest = section(_G.GAGConfig, "Harvest")
+		harvest["Auto Harvest"] = not cfg(harvest, "Auto Harvest", true)
+		status.Text = "Harvest: " .. tostring(harvest["Auto Harvest"])
+	end)
+
+	makeButton("Plant: toggle", 186, function()
+		_G.GAGConfig = Reconstructed.GetEffectiveGAGConfig(_G.GAGConfig)
+		local planting = section(_G.GAGConfig, "Planting")
+		planting["Auto Plant"] = not cfg(planting, "Auto Plant", true)
+		status.Text = "Plant: " .. tostring(planting["Auto Plant"])
+	end)
+
+	makeButton("Hide GUI", 224, function()
+		gui.Enabled = false
+	end)
+
+	return gui
+end
+
+function Reconstructed.Start(context)
+	context = context or {}
+	_G.GAGRunning = true
+	Reconstructed.ExecuteRemotes = context.ExecuteRemotes ~= false
+	Reconstructed.ExecuteMovement = context.ExecuteMovement ~= false
+	Reconstructed.CreateSimpleGUI(context)
+
+	while _G.GAGRunning do
+		safeCall(function()
+			Reconstructed.RunOnce({
+				Require = context.Require or require,
+				ExecuteRemotes = true,
+				ExecuteMovement = true,
+				GAGConfig = _G.GAGConfig,
+			})
+		end)
+		safeWait(context.Interval or 1)
+	end
+end
+
 function Reconstructed.RunOnce(context)
 	context = context or {}
 
@@ -2877,6 +3015,16 @@ function Reconstructed.RunOnce(context)
 	Reconstructed.MiscStub(gagConfig, context)
 	Reconstructed.FriendsStub(gagConfig, context)
 	Reconstructed.DebugStub(gagConfig, context)
+end
+
+if type(_G) == "table" then
+	_G.GAG2Reconstructed = Reconstructed
+end
+
+if type(game) == "userdata" or type(game) == "table" then
+	safeCall(function()
+		Reconstructed.CreateSimpleGUI({ Require = require })
+	end)
 end
 
 return Reconstructed
