@@ -5017,20 +5017,8 @@ function Reconstructed.ApplyGameUIVisibilityGAG(context, gagConfig)
 		return false
 	end
 
-	local starterGui = getService("StarterGui")
-
-	if starterGui and Enum and Enum.CoreGuiType and type(safeProp(starterGui, "SetCoreGuiEnabled")) == "function" then
-		local success = safeCall(function()
-			starterGui:SetCoreGuiEnabled(Enum.CoreGuiType.All, not hide)
-		end)
-
-		if success then
-			Reconstructed.GameUIHiddenGAG2 = hide
-			recordAction("GameUI", "CoreGui", { Hidden = hide })
-			return true
-		end
-	end
-
+	Reconstructed.GameUIHiddenGAG2 = hide
+	recordAction("GameUI", "CoreGuiSkipped", { Hidden = hide, Reason = "AvoidCorePackagesError" })
 	return false
 end
 
