@@ -3,6 +3,9 @@ local Reconstructed = {}
 Reconstructed.ExecuteRemotes = false
 Reconstructed.ExecuteMovement = false
 Reconstructed.ActionLog = {}
+Reconstructed.ConsoleLog = {}
+Reconstructed.LogFileBufferGAG2 = ""
+Reconstructed.LastMailSendTimeGAG2 = 0
 
 Reconstructed.DefaultGAGConfig = {
 	["Harvest"] = {
@@ -96,6 +99,7 @@ Reconstructed.DefaultGAGConfig = {
 	["Performance"] = {
 		["FPS Cap"] = 0,
 		["Low Graphics"] = true,
+		["Black Screen"] = false,
 		["Remove Other Gardens"] = true,
 		["Hide Crop Visuals"] = true,
 		["Hide Fruit Visuals"] = true,
@@ -167,16 +171,17 @@ local function deepCopy(value)
 	return copied
 end
 
-local function deepMerge(base, override)
+local function deepMerge(base, override, depth)
 	local merged = deepCopy(base)
+	depth = depth or 0
 
 	if type(override) ~= "table" then
 		return merged
 	end
 
 	for key, value in pairs(override) do
-		if type(value) == "table" and type(merged[key]) == "table" then
-			merged[key] = deepMerge(merged[key], value)
+		if type(value) == "table" and type(merged[key]) == "table" and depth < 1 then
+			merged[key] = deepMerge(merged[key], value, depth + 1)
 		else
 			merged[key] = deepCopy(value)
 		end
@@ -580,12 +585,128 @@ local function shouldExecuteMovement(context)
 	return Reconstructed.ExecuteMovement == true
 end
 
+local function logFileNamePartGAG2(value)
+	return tostring(value or "GAG"):gsub("[\\/:*?\"<>|]", "_"):gsub("%s+", "_")
+end
+
+local function getDebugConfigGAG2()
+	local effective = _G and Reconstructed.GetEffectiveGAGConfig and Reconstructed.GetEffectiveGAGConfig(_G.GAGConfig) or Reconstructed.DefaultGAGConfig
+	return section(effective, "Debug")
+end
+
+local function debugConsoleAllowedGAG2(typeName, name)
+	local debugConfig = getDebugConfigGAG2()
+	local consoleConfig = cfg(debugConfig, "Console", true)
+
+	if consoleConfig == false then
+		return false
+	end
+
+	if consoleConfig == true then
+		return true
+	end
+
+	if type(consoleConfig) == "table" then
+		for key, value in pairs(consoleConfig) do
+			local token = type(value) == "string" and value or key
+			if isTruthySelectionValue(key, value) and token and token ~= "" then
+				local tokenText = tostring(token)
+				if tostring(typeName or ""):find(tokenText, 1, true) or tostring(name or ""):find(tokenText, 1, true) then
+					return true
+				end
+			end
+		end
+	end
+
+	return false
+end
+
+local function actionToTextGAG2(entry)
+	local parts = {
+		"[GAG2]",
+		tostring(entry.Type or "Log"),
+		tostring(entry.Name or ""),
+	}
+
+	local args = entry.Args
+	if type(args) == "table" and #args > 0 then
+		local rendered = {}
+		for index = 1, math.min(#args, 4) do
+			table.insert(rendered, tostring(args[index]))
+		end
+		table.insert(parts, table.concat(rendered, ", "))
+	end
+
+	return table.concat(parts, " ")
+end
+
+local function ensureLogFolderGAG2(path)
+	local folder = tostring(path or ""):match("^(.*)/[^/]+$")
+	if not folder or folder == "" or type(makefolder) ~= "function" then
+		return
+	end
+
+	local exists = false
+	if type(isfolder) == "function" then
+		local success, result = safeCall(isfolder, folder)
+		exists = success and result == true
+	end
+
+	if not exists then
+		safeCall(makefolder, folder)
+	end
+end
+
+local function appendDebugFileGAG2(text)
+	local debugConfig = getDebugConfigGAG2()
+	if not cfg(debugConfig, "Log To File", true) then
+		return false
+	end
+
+	local player = getLocalPlayer({})
+	local playerName = safeProp(player, "Name", "local")
+	local path = "GAG2/GAG_LOG_" .. logFileNamePartGAG2(playerName) .. ".txt"
+	ensureLogFolderGAG2(path)
+
+	local line = tostring(text or "") .. "\n"
+	Reconstructed.LogFileBufferGAG2 = tostring(Reconstructed.LogFileBufferGAG2 or "") .. line
+	if #Reconstructed.LogFileBufferGAG2 > 60000 then
+		Reconstructed.LogFileBufferGAG2 = Reconstructed.LogFileBufferGAG2:sub(-60000)
+	end
+
+	if type(writefile) == "function" then
+		return safeCall(writefile, path, Reconstructed.LogFileBufferGAG2)
+	end
+
+	return false
+end
+
 local function recordAction(typeName, name, args)
-	table.insert(Reconstructed.ActionLog, {
+	local entry = {
 		Type = typeName,
 		Name = name,
 		Args = args or {},
-	})
+		Time = os and os.time and os.time() or nil,
+	}
+
+	table.insert(Reconstructed.ActionLog, entry)
+
+	while #Reconstructed.ActionLog > 250 do
+		table.remove(Reconstructed.ActionLog, 1)
+	end
+
+	local text = actionToTextGAG2(entry)
+	table.insert(Reconstructed.ConsoleLog, text)
+
+	while #Reconstructed.ConsoleLog > 40 do
+		table.remove(Reconstructed.ConsoleLog, 1)
+	end
+
+	if debugConsoleAllowedGAG2(typeName, name) and type(print) == "function" then
+		safeCall(print, text)
+	end
+
+	appendDebugFileGAG2(text)
 end
 
 local function isA(instance, className)
@@ -649,11 +770,7 @@ local function countSelection(selection)
 end
 
 function Reconstructed.EmitRemote(api, remoteName, ...)
-	table.insert(Reconstructed.ActionLog, {
-		Type = "Remote",
-		Name = remoteName,
-		Args = { ... },
-	})
+	recordAction("Remote", remoteName, { ... })
 
 	local networker = safeProp(api, "Networker")
 	local fire = safeProp(networker, "Fire")
@@ -670,11 +787,7 @@ function Reconstructed.EmitRemote(api, remoteName, ...)
 end
 
 function Reconstructed.EmitTeleport(api, cframe, reason, condition)
-	table.insert(Reconstructed.ActionLog, {
-		Type = "Teleport",
-		Name = reason,
-		Args = { cframe },
-	})
+	recordAction("Teleport", reason, { cframe })
 
 	local teleportManager = safeProp(api, "TeleportManager")
 	local getTo = safeProp(teleportManager, "GetTo")
@@ -816,11 +929,7 @@ end
 Reconstructed.Fruit_Misc = {}
 
 function Reconstructed.Fruit_Misc.AddValue(button, data)
-	table.insert(Reconstructed.ActionLog, {
-		Type = "FruitValueUI",
-		Name = safeProp(button, "Name"),
-		Args = { data },
-	})
+	recordAction("FruitValueUI", safeProp(button, "Name"), { data })
 end
 
 function Reconstructed.Fruit_Misc.GetTotalFruitValue()
@@ -830,11 +939,7 @@ end
 Reconstructed.ESP = {}
 
 function Reconstructed.ESP.CreateESP(target, options)
-	table.insert(Reconstructed.ActionLog, {
-		Type = "ESP",
-		Name = safeProp(target, "Name"),
-		Args = { options },
-	})
+	recordAction("ESP", safeProp(target, "Name"), { options })
 
 	if not Instance or not target then
 		return nil
@@ -886,11 +991,7 @@ end
 Reconstructed.TeleportManager = {}
 
 function Reconstructed.TeleportManager.GetTo(cframe, reason, context, _, _, condition)
-	table.insert(Reconstructed.ActionLog, {
-		Type = "Teleport",
-		Name = reason,
-		Args = { cframe },
-	})
+	recordAction("Teleport", reason, { cframe })
 
 	if type(condition) == "function" then
 		local conditionSuccess, conditionResult = safeCall(condition)
@@ -912,11 +1013,7 @@ function Reconstructed.TeleportManager.GetTo(cframe, reason, context, _, _, cond
 end
 
 function Reconstructed.TeleportManager.Reset(reason)
-	table.insert(Reconstructed.ActionLog, {
-		Type = "TeleportReset",
-		Name = reason,
-		Args = {},
-	})
+	recordAction("TeleportReset", reason, {})
 end
 
 function Reconstructed.IsMaxInventory(playerStats)
@@ -987,8 +1084,8 @@ function Reconstructed.BuildLegacyConfig(gagConfig)
 	legacy["Auto Collect All Fruit"] = autoHarvest
 	legacy["Stop Collect If Backpack Is Full Max"] = true
 	legacy["Select Fruit"] = cfg(harvest, "Only Harvest", {})
-	legacy["Select Sell Fruit"] = cfg(neverSell, "By Fruit", {})
-	legacy["Select Sell Mutation"] = cfg(neverSell, "By Mutation", {})
+	legacy["Select Sell Fruit"] = {}
+	legacy["Select Sell Mutation"] = {}
 	legacy["Disable Teleport"] = not cfg(misc, "Teleport", true)
 	legacy["Auto Sell Pets"] = false
 	legacy["Select Pets"] = cfg(pets, "Buy", {})
@@ -1019,9 +1116,16 @@ function Reconstructed.ValidateGAGConfig(gagConfig)
 	expect("Money", "Keep Cash", "number")
 	expect("Pets", "Auto Buy Slots", "boolean")
 	expect("Gear", "Auto Buy", "boolean")
+	expect("Gear", "Keep Cash", "number")
 	expect("Mail", "Send To", "string")
+	expect("Mail", "Send Every", "number")
+	expect("Misc", "Show Stats", "boolean")
+	expect("Misc", "Hide Game UI", "boolean")
+	expect("Misc", "Show Console", "boolean")
 	expect("Misc", "Fast Travel", "boolean")
 	expect("Performance", "Low Graphics", "boolean")
+	expect("Performance", "Black Screen", "boolean")
+	expect("Debug", "Log To File", "boolean")
 
 	return warnings
 end
@@ -3226,7 +3330,7 @@ function Reconstructed.AutoBuyGearGAG2(context, gagConfig)
 	gagConfig = gagConfig or context.GAGConfig or Reconstructed.GetEffectiveGAGConfig()
 
 	local gear = section(gagConfig, "Gear")
-	if not cfg(gear, "Auto Buy", true) and not hasSelection(cfg(gear, "Buy Gear", {})) and not hasSelection(cfg(gear, "Keep Gear", {})) then
+	if not cfg(gear, "Auto Buy", true) then
 		return 0
 	end
 
@@ -3245,12 +3349,23 @@ function Reconstructed.AutoBuyGearGAG2(context, gagConfig)
 	local player = getLocalPlayer(context)
 	local counts = Reconstructed.GetInventoryCounts(player)
 	local bought = 0
+	local keepCash = tonumber(cfg(gear, "Keep Cash", 15000)) or 0
+
+	if keepCash > 0 and Reconstructed.GetSheckles(player) <= keepCash then
+		recordPlanner("Gear Keep Cash", { Cash = Reconstructed.GetSheckles(player), KeepCash = keepCash })
+		return 0
+	end
 
 	for _, entry in ipairs(selected) do
 		local current = inventoryCountForNameGAG2(counts, entry.Name)
 		local needed = math.max(1, math.floor(tonumber(entry.Count) or 1))
 
 		for _ = current + 1, needed do
+			if keepCash > 0 and Reconstructed.GetSheckles(player) <= keepCash then
+				recordPlanner("Gear Keep Cash", { Cash = Reconstructed.GetSheckles(player), KeepCash = keepCash, Gear = entry.Name })
+				return bought
+			end
+
 			if Reconstructed.BuyGearGAG2(context, entry.Name, { Amount = 1 }) then
 				bought = bought + 1
 				safeWait(0.15)
@@ -3542,18 +3657,31 @@ function Reconstructed.AutoMailGAG2(context, gagConfig)
 
 	local recipient = cfg(mail, "Send To", "")
 	local sendSelection = cfg(mail, "Send", {})
+	local sendEveryMinutes = tonumber(cfg(mail, "Send Every", 0)) or 0
+	local sendDelay = sendEveryMinutes > 0 and sendEveryMinutes * 60 or 45
+	local now = os and os.time and os.time() or 0
+	local contextLastSend = tonumber(context.LastMailSendTime) or 0
+	local globalLastSend = tonumber(Reconstructed.LastMailSendTimeGAG2) or 0
+	local lastSend = math.max(contextLastSend, globalLastSend)
+	local canSend = now == 0 or lastSend == 0 or now - lastSend >= sendDelay
 
-	if recipient ~= "" and hasSelection(sendSelection) then
+	if recipient ~= "" and hasSelection(sendSelection) and canSend then
 		for _, tool in ipairs(Reconstructed.GetAllTool(getLocalPlayer(context))) do
 			local itemName = safeProp(tool, "Name", "")
 
 			if selectionMatches(sendSelection, itemName) and not getAttr(tool, "IsFavorite") then
 				if Reconstructed.SendMailGAG2(context, recipient, tool) then
 					acted = acted + 1
+					local sentAt = os and os.time and os.time() or Reconstructed.LastMailSendTimeGAG2
+					Reconstructed.LastMailSendTimeGAG2 = sentAt
+					context.LastMailSendTime = sentAt
 					safeWait(0.25)
+					break
 				end
 			end
 		end
+	elseif recipient ~= "" and hasSelection(sendSelection) and not canSend then
+		recordPlanner("Mail Send Every", { LastSend = lastSend, Delay = sendDelay, Remaining = math.max(0, sendDelay - (now - lastSend)) })
 	elseif acted == 0 and (cfg(mail, "Auto Claim", true) or recipient ~= "" or hasSelection(sendSelection)) then
 		Reconstructed.MailPlannerStub(gagConfig, context)
 	end
@@ -4567,6 +4695,192 @@ function Reconstructed.HidePlayersGAG(context, gagConfig)
 	return hidden
 end
 
+function Reconstructed.ApplyBlackScreenGAG(context, gagConfig)
+	context = context or {}
+	gagConfig = gagConfig or context.GAGConfig or Reconstructed.GetEffectiveGAGConfig()
+
+	local performance = section(gagConfig, "Performance")
+	local enabled = cfg(performance, "Black Screen", false) == true
+	local runService = getService("RunService")
+
+	local function setRendering(value)
+		if runService and type(safeProp(runService, "Set3dRenderingEnabled")) == "function" then
+			local success = safeCall(function()
+				runService:Set3dRenderingEnabled(value)
+			end)
+
+			return success
+		end
+
+		return false
+	end
+
+	local player = getLocalPlayer(context)
+	local playerGui = player and findChild(player, "PlayerGui")
+	local overlay = playerGui and findChild(playerGui, "GAG2BlackScreenOverlay")
+
+	local function newInstance(className)
+		if not Instance then
+			return nil
+		end
+
+		local success, created = safeCall(function()
+			return Instance.new(className)
+		end)
+
+		if success then
+			return created
+		end
+
+		return nil
+	end
+
+	local function setRestoreFlags(target)
+		if type(target) ~= "table" then
+			return false
+		end
+
+		if type(target["Performance"]) ~= "table" then
+			target["Performance"] = {}
+		end
+
+		if type(target["Misc"]) ~= "table" then
+			target["Misc"] = {}
+		end
+
+		target["Performance"]["Black Screen"] = false
+		target["Misc"]["Hide Game UI"] = false
+		return true
+	end
+
+	if not enabled then
+		if Reconstructed.RenderingDisabledGAG2 and setRendering(true) then
+			Reconstructed.RenderingDisabledGAG2 = false
+		end
+
+		if overlay then
+			if Reconstructed.RenderingDisabledGAG2 then
+				safeSet(overlay, "Enabled", true)
+			else
+				safeSet(overlay, "Enabled", false)
+				local destroy = safeProp(overlay, "Destroy")
+				if type(destroy) == "function" then
+					safeCall(function()
+						overlay:Destroy()
+					end)
+				end
+				Reconstructed.BlackScreenRestoreButtonGAG2 = nil
+			end
+		end
+
+		return false
+	end
+
+	if not playerGui or not Instance then
+		return false
+	end
+
+	overlay = overlay or newInstance("ScreenGui")
+	if not overlay then
+		return false
+	end
+
+	safeSet(overlay, "Name", "GAG2BlackScreenOverlay")
+	safeSet(overlay, "ResetOnSpawn", false)
+	safeSet(overlay, "IgnoreGuiInset", true)
+	safeSet(overlay, "DisplayOrder", 1000000)
+	safeSet(overlay, "Enabled", true)
+	if not safeSet(overlay, "Parent", playerGui) then
+		return false
+	end
+
+	local frame = findChild(overlay, "BlackScreen") or newInstance("Frame")
+	if not frame then
+		return false
+	end
+
+	safeSet(frame, "Name", "BlackScreen")
+	safeSet(frame, "Size", UDim2.fromScale(1, 1))
+	safeSet(frame, "Position", UDim2.fromScale(0, 0))
+	safeSet(frame, "BackgroundColor3", Color3.fromRGB(0, 0, 0))
+	safeSet(frame, "BorderSizePixel", 0)
+	safeSet(frame, "ZIndex", 1)
+	safeSet(frame, "Visible", true)
+	if not safeSet(frame, "Parent", overlay) then
+		return false
+	end
+
+	local button = findChild(overlay, "RestoreButton") or newInstance("TextButton")
+	if not button then
+		return false
+	end
+
+	safeSet(button, "Name", "RestoreButton")
+	safeSet(button, "Size", UDim2.fromOffset(96, 32))
+	safeSet(button, "Position", UDim2.fromOffset(12, 12))
+	safeSet(button, "BackgroundColor3", Color3.fromRGB(28, 28, 28))
+	safeSet(button, "BorderSizePixel", 0)
+	safeSet(button, "TextColor3", Color3.fromRGB(255, 255, 255))
+	safeSet(button, "Font", Enum.Font.SourceSansBold)
+	safeSet(button, "TextSize", 14)
+	safeSet(button, "Text", "RESTORE")
+	safeSet(button, "ZIndex", 2)
+	safeSet(button, "Visible", true)
+	if not safeSet(button, "Parent", overlay) then
+		return false
+	end
+
+	local clickSignal = safeProp(button, "MouseButton1Click")
+	if not clickSignal then
+		return false
+	end
+
+	if Reconstructed.BlackScreenRestoreButtonGAG2 ~= button then
+		local connected = safeCall(function()
+			clickSignal:Connect(function()
+				setRestoreFlags(gagConfig)
+
+				if type(context) == "table" and type(context.GAGConfig) == "table" then
+					setRestoreFlags(context.GAGConfig)
+				end
+
+				if type(_G) == "table" then
+					_G.GAGConfig = Reconstructed.GetEffectiveGAGConfig(_G.GAGConfig)
+					setRestoreFlags(_G.GAGConfig)
+					gagConfig = _G.GAGConfig
+				end
+
+				if setRendering(true) then
+					Reconstructed.RenderingDisabledGAG2 = false
+					safeSet(overlay, "Enabled", false)
+				else
+					safeSet(overlay, "Enabled", true)
+				end
+
+				if Reconstructed.ApplyGameUIVisibilityGAG then
+					Reconstructed.ApplyGameUIVisibilityGAG(context, gagConfig)
+				end
+			end)
+		end)
+
+		if not connected then
+			return false
+		end
+
+		Reconstructed.BlackScreenRestoreButtonGAG2 = button
+	end
+
+	if setRendering(false) then
+		Reconstructed.RenderingDisabledGAG2 = true
+	else
+		safeSet(overlay, "Enabled", false)
+		return false
+	end
+
+	recordAction("Performance", "Black Screen", {})
+	return true
+end
+
 function Reconstructed.ApplyPerformanceGAG(context, gagConfig)
 	gagConfig = gagConfig or context and context.GAGConfig or Reconstructed.GetEffectiveGAGConfig()
 
@@ -4576,6 +4890,155 @@ function Reconstructed.ApplyPerformanceGAG(context, gagConfig)
 		OtherGardens = Reconstructed.HideOtherGardensGAG(context, gagConfig),
 		OwnedVisuals = Reconstructed.HideOwnedCropVisualsGAG(context, gagConfig),
 		Players = Reconstructed.HidePlayersGAG(context, gagConfig),
+		BlackScreen = Reconstructed.ApplyBlackScreenGAG(context, gagConfig),
+	}
+end
+
+function Reconstructed.GetRuntimeStatsGAG(context, gagConfig)
+	context = context or {}
+	gagConfig = gagConfig or context.GAGConfig or Reconstructed.GetEffectiveGAGConfig()
+
+	local player = getLocalPlayer(context)
+	local plot = context.Plot or Reconstructed.GetOwnerPlot(context)
+	local plantsFolder = Reconstructed.GetPlotPlants(plot)
+	local _, inventoryTotal = Reconstructed.GetInventoryCounts(player)
+
+	return {
+		Cash = Reconstructed.GetSheckles(player),
+		Inventory = inventoryTotal,
+		Harvested = Reconstructed.GetHarvestedInventoryCount(player),
+		Plants = #(QueryChildren(plantsFolder)),
+		Actions = #(Reconstructed.ActionLog or {}),
+		Running = _G and _G.GAGRunning == true,
+	}
+end
+
+function Reconstructed.GetRuntimeStatsTextGAG(context, gagConfig)
+	local stats = Reconstructed.GetRuntimeStatsGAG(context, gagConfig)
+	local lines = {
+		"GAG2 Stats",
+		"Status: " .. (stats.Running and "running" or "stopped"),
+		"Cash: " .. tostring(stats.Cash),
+		"Inventory: " .. tostring(stats.Inventory) .. " / Fruit: " .. tostring(stats.Harvested),
+		"Plants: " .. tostring(stats.Plants),
+		"Actions: " .. tostring(stats.Actions),
+	}
+
+	return table.concat(lines, "\n")
+end
+
+function Reconstructed.GetOverlayLabelGAG(context, name, position, size)
+	context = context or {}
+	local player = getLocalPlayer(context)
+	local playerGui = player and findChild(player, "PlayerGui")
+
+	if not playerGui or not Instance then
+		return nil
+	end
+
+	local guiName = "GAG2" .. name .. "Overlay"
+	local gui = findChild(playerGui, guiName) or Instance.new("ScreenGui")
+	safeSet(gui, "Name", guiName)
+	safeSet(gui, "ResetOnSpawn", false)
+	safeSet(gui, "Parent", playerGui)
+
+	local label = findChild(gui, "Text") or Instance.new("TextLabel")
+	safeSet(label, "Name", "Text")
+	safeSet(label, "Size", size or UDim2.fromOffset(250, 120))
+	safeSet(label, "Position", position or UDim2.fromOffset(20, 560))
+	safeSet(label, "BackgroundColor3", Color3.fromRGB(18, 18, 22))
+	safeSet(label, "BackgroundTransparency", 0.18)
+	safeSet(label, "BorderSizePixel", 0)
+	safeSet(label, "TextColor3", Color3.fromRGB(235, 235, 235))
+	safeSet(label, "Font", Enum.Font.SourceSans)
+	safeSet(label, "TextSize", 15)
+	safeSet(label, "TextXAlignment", Enum.TextXAlignment.Left)
+	safeSet(label, "TextYAlignment", Enum.TextYAlignment.Top)
+	safeSet(label, "TextWrapped", true)
+	safeSet(label, "Parent", gui)
+
+	return label, gui
+end
+
+function Reconstructed.UpdateStatsOverlayGAG(context, gagConfig)
+	context = context or {}
+	gagConfig = gagConfig or context.GAGConfig or Reconstructed.GetEffectiveGAGConfig()
+
+	local misc = section(gagConfig, "Misc")
+	local label, gui = Reconstructed.GetOverlayLabelGAG(context, "Stats", UDim2.fromOffset(20, 560), UDim2.fromOffset(250, 120))
+	if not label or not gui then
+		return false
+	end
+
+	local visible = cfg(misc, "Show Stats", true) == true
+	safeSet(gui, "Enabled", visible)
+	safeSet(label, "Visible", visible)
+
+	if visible then
+		safeSet(label, "Text", Reconstructed.GetRuntimeStatsTextGAG(context, gagConfig))
+	end
+
+	return visible
+end
+
+function Reconstructed.UpdateConsoleOverlayGAG(context, gagConfig)
+	context = context or {}
+	gagConfig = gagConfig or context.GAGConfig or Reconstructed.GetEffectiveGAGConfig()
+
+	local misc = section(gagConfig, "Misc")
+	local label, gui = Reconstructed.GetOverlayLabelGAG(context, "Console", UDim2.new(1, -360, 0, 20), UDim2.fromOffset(340, 210))
+	if not label or not gui then
+		return false
+	end
+
+	local visible = cfg(misc, "Show Console", false) == true
+	safeSet(gui, "Enabled", visible)
+	safeSet(label, "Visible", visible)
+
+	if visible then
+		local lines = {}
+		local source = Reconstructed.ConsoleLog or {}
+		for index = math.max(1, #source - 11), #source do
+			table.insert(lines, tostring(source[index]))
+		end
+		safeSet(label, "Text", table.concat(lines, "\n"))
+	end
+
+	return visible
+end
+
+function Reconstructed.ApplyGameUIVisibilityGAG(context, gagConfig)
+	context = context or {}
+	gagConfig = gagConfig or context.GAGConfig or Reconstructed.GetEffectiveGAGConfig()
+
+	local misc = section(gagConfig, "Misc")
+	local hide = cfg(misc, "Hide Game UI", false) == true
+	if Reconstructed.GameUIHiddenGAG2 == hide then
+		return false
+	end
+
+	local starterGui = getService("StarterGui")
+
+	if starterGui and Enum and Enum.CoreGuiType and type(safeProp(starterGui, "SetCoreGuiEnabled")) == "function" then
+		local success = safeCall(function()
+			starterGui:SetCoreGuiEnabled(Enum.CoreGuiType.All, not hide)
+		end)
+
+		if success then
+			Reconstructed.GameUIHiddenGAG2 = hide
+			recordAction("GameUI", "CoreGui", { Hidden = hide })
+			return true
+		end
+	end
+
+	return false
+end
+
+function Reconstructed.ApplyMiscUIGAG(context, gagConfig)
+	return {
+		Stats = Reconstructed.UpdateStatsOverlayGAG(context, gagConfig),
+		Console = Reconstructed.UpdateConsoleOverlayGAG(context, gagConfig),
+		GameUI = Reconstructed.ApplyGameUIVisibilityGAG(context, gagConfig),
 	}
 end
 
@@ -4659,11 +5122,7 @@ function Reconstructed.ShovelRuntimePacketStub(gagConfig, context)
 end
 
 function Reconstructed.RecordStub(featureName, config)
-	table.insert(Reconstructed.ActionLog, {
-		Type = "Stub",
-		Name = featureName,
-		Args = { config },
-	})
+	recordAction("Stub", featureName, { config })
 end
 
 function Reconstructed.AutoPlantStub(gagConfig, context)
@@ -4725,6 +5184,7 @@ function Reconstructed.MiscStub(gagConfig, context)
 	return {
 		WalkSpeed = Reconstructed.SetWalkSpeedGAG(context, gagConfig),
 		ReturnToGarden = Reconstructed.ReturnToGardenGAG(context, gagConfig),
+		UI = Reconstructed.ApplyMiscUIGAG(context, gagConfig),
 	}
 end
 
@@ -5039,6 +5499,12 @@ function Reconstructed.CreateSimpleGUI(context)
 			target[key] = not cfg(target, key, default)
 			refresh()
 			setStatus(key .. " = " .. tostring(target[key]))
+			if sectionName == "Misc" and (key == "Show Stats" or key == "Show Console" or key == "Hide Game UI") then
+				Reconstructed.ApplyMiscUIGAG(context, _G.GAGConfig)
+			end
+			if sectionName == "Performance" and key == "Black Screen" then
+				Reconstructed.ApplyBlackScreenGAG(context, _G.GAGConfig)
+			end
 		end, Color3.fromRGB(50, 70, 115))
 		refresh()
 		return button
@@ -5092,6 +5558,16 @@ function Reconstructed.CreateSimpleGUI(context)
 						end)
 						safeWait(1)
 					end
+
+					safeCall(function()
+						local misc = getConfigSection("Misc")
+						local performance = getConfigSection("Performance")
+						misc["Hide Game UI"] = false
+						performance["Black Screen"] = false
+						Reconstructed.ApplyBlackScreenGAG(context, _G.GAGConfig)
+						Reconstructed.ApplyGameUIVisibilityGAG(context, _G.GAGConfig)
+					end)
+
 					_G.GAG2ReconstructedLoop = false
 				end)
 			else
@@ -5102,6 +5578,12 @@ function Reconstructed.CreateSimpleGUI(context)
 
 	makeButton("STOP FARM", function()
 		_G.GAGRunning = false
+		local misc = getConfigSection("Misc")
+		local performance = getConfigSection("Performance")
+		misc["Hide Game UI"] = false
+		performance["Black Screen"] = false
+		Reconstructed.ApplyBlackScreenGAG(context, _G.GAGConfig)
+		Reconstructed.ApplyGameUIVisibilityGAG(context, _G.GAGConfig)
 		setStatus("Status: stopped")
 	end, Color3.fromRGB(150, 55, 55))
 
@@ -5111,6 +5593,9 @@ function Reconstructed.CreateSimpleGUI(context)
 	end, Color3.fromRGB(80, 80, 90))
 
 	showButton.MouseButton1Click:Connect(function()
+		local misc = getConfigSection("Misc")
+		misc["Hide Game UI"] = false
+		Reconstructed.ApplyGameUIVisibilityGAG(context, _G.GAGConfig)
 		frame.Visible = true
 		showButton.Visible = false
 	end)
@@ -5133,11 +5618,15 @@ function Reconstructed.CreateSimpleGUI(context)
 	label("Pets / Gear / Event / Mail")
 	makeToggle("Pets", "Auto Buy Slots", true)
 	makeToggle("Gear", "Auto Buy", true)
+	makeNumber("Gear", "Keep Cash", 15000)
 	makeToggle("Event Seeds", "Auto Claim", true)
 	makeToggle("Mail", "Auto Claim", true)
+	makeNumber("Mail", "Send Every", 0)
 
 	label("Misc")
 	makeToggle("Misc", "Auto Return To Garden", true)
+	makeToggle("Misc", "Show Stats", true)
+	makeToggle("Misc", "Show Console", false)
 	makeToggle("Misc", "Teleport", true)
 	makeToggle("Misc", "Fast Travel", true)
 	makeToggle("Misc", "Hide Game UI", false)
@@ -5146,6 +5635,7 @@ function Reconstructed.CreateSimpleGUI(context)
 
 	label("Performance")
 	makeToggle("Performance", "Low Graphics", true)
+	makeToggle("Performance", "Black Screen", false)
 	makeToggle("Performance", "Remove Other Gardens", true)
 	makeToggle("Performance", "Hide Crop Visuals", true)
 	makeToggle("Performance", "Hide Fruit Visuals", true)
@@ -5221,6 +5711,10 @@ function Reconstructed.CreateSimpleGUI(context)
 		setStatus("Save dump: " .. tostring(success) .. " " .. tostring(path))
 	end, Color3.fromRGB(70, 95, 135))
 
+	safeCall(function()
+		Reconstructed.ApplyMiscUIGAG(context, _G.GAGConfig)
+	end)
+
 	return gui
 end
 
@@ -5235,13 +5729,30 @@ function Reconstructed.Start(context)
 		safeCall(function()
 			Reconstructed.RunOnce({
 				Require = context.Require or require,
-				ExecuteRemotes = true,
-				ExecuteMovement = true,
+				ExecuteRemotes = Reconstructed.ExecuteRemotes,
+				ExecuteMovement = Reconstructed.ExecuteMovement,
 				GAGConfig = _G.GAGConfig,
 			})
 		end)
 		safeWait(context.Interval or 1)
 	end
+
+	local currentConfig = Reconstructed.GetEffectiveGAGConfig(_G and _G.GAGConfig or context.GAGConfig)
+	local misc = section(currentConfig, "Misc")
+	local performance = section(currentConfig, "Performance")
+	performance["Black Screen"] = false
+	misc["Hide Game UI"] = false
+
+	if type(_G) == "table" then
+		_G.GAGConfig = currentConfig
+	end
+
+	if type(context.GAGConfig) == "table" then
+		context.GAGConfig = currentConfig
+	end
+
+	Reconstructed.ApplyBlackScreenGAG(context, currentConfig)
+	Reconstructed.ApplyGameUIVisibilityGAG(context, currentConfig)
 end
 
 function Reconstructed.RunOnce(context)
