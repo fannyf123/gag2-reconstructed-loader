@@ -2066,6 +2066,36 @@ end
 Reconstructed.NetworkingDumpGAG2 = Reconstructed.NetworkingDumpGAG2 or {}
 Reconstructed.NetworkingIndexGAG2 = Reconstructed.NetworkingIndexGAG2 or {}
 Reconstructed.PacketAttemptsGAG2 = Reconstructed.PacketAttemptsGAG2 or {}
+Reconstructed.ConfirmedPacketsGAG2 = Reconstructed.ConfirmedPacketsGAG2 or {
+	["SeedShop.PurchaseSeed"] = { Path = "Networking.SeedShop.PurchaseSeed", Name = "PurchaseSeed", Namespace = "Networking.SeedShop", PreferredKind = "Fire", Arity = 1 },
+	["GearShop.PurchaseGear"] = { Path = "Networking.GearShop.PurchaseGear", Name = "PurchaseGear", Namespace = "Networking.GearShop", PreferredKind = "Fire", Arity = 1 },
+	["GearShop.EquipGear"] = { Path = "Networking.GearShop.EquipGear", Name = "EquipGear", Namespace = "Networking.GearShop", PreferredKind = "Fire", Arity = 1 },
+	["GearShop.UnequipGear"] = { Path = "Networking.GearShop.UnequipGear", Name = "UnequipGear", Namespace = "Networking.GearShop", PreferredKind = "Fire", Arity = 1 },
+	["GearShop.RequestEquippableState"] = { Path = "Networking.GearShop.RequestEquippableState", Name = "RequestEquippableState", Namespace = "Networking.GearShop", PreferredKind = "Invoke", Arity = 0 },
+	["Mailbox.List"] = { Path = "Networking.Mailbox.List", Name = "List", Namespace = "Networking.Mailbox", PreferredKind = "Invoke", Arity = 0 },
+	["Mailbox.OpenInbox"] = { Path = "Networking.Mailbox.OpenInbox", Name = "OpenInbox", Namespace = "Networking.Mailbox", PreferredKind = "Invoke", Arity = 0 },
+	["Mailbox.Claim"] = { Path = "Networking.Mailbox.Claim", Name = "Claim", Namespace = "Networking.Mailbox", PreferredKind = "Invoke", Arity = 1 },
+	["Mailbox.LookupPlayer"] = { Path = "Networking.Mailbox.LookupPlayer", Name = "LookupPlayer", Namespace = "Networking.Mailbox", PreferredKind = "Invoke", Arity = 1 },
+	["Mailbox.Send"] = { Path = "Networking.Mailbox.Send", Name = "Send", Namespace = "Networking.Mailbox", PreferredKind = "Fire", Arity = 3 },
+	["Mailbox.SendBatch"] = { Path = "Networking.Mailbox.SendBatch", Name = "SendBatch", Namespace = "Networking.Mailbox", PreferredKind = "Invoke", Arity = 3 },
+	["Auctioneer.RequestSnapshot"] = { Path = "Networking.Auctioneer.RequestSnapshot", Name = "RequestSnapshot", Namespace = "Networking.Auctioneer", PreferredKind = "Invoke", Arity = 0 },
+	["Auctioneer.PurchaseLot"] = { Path = "Networking.Auctioneer.PurchaseLot", Name = "PurchaseLot", Namespace = "Networking.Auctioneer", PreferredKind = "Fire", Arity = 2 },
+	["Garden.CollectFruit"] = { Path = "Networking.Garden.CollectFruit", Name = "CollectFruit", Namespace = "Networking.Garden", PreferredKind = "Fire", Arity = 2 },
+	["Pets.GetEquippedPets"] = { Path = "Networking.Pets.GetEquippedPets", Name = "GetEquippedPets", Namespace = "Networking.Pets", PreferredKind = "Invoke", Arity = 0 },
+	["Pets.RequestEquipByName"] = { Path = "Networking.Pets.RequestEquipByName", Name = "RequestEquipByName", Namespace = "Networking.Pets", PreferredKind = "Fire", Arity = 1 },
+	["Pets.RequestUnequipByName"] = { Path = "Networking.Pets.RequestUnequipByName", Name = "RequestUnequipByName", Namespace = "Networking.Pets", PreferredKind = "Fire", Arity = 1 },
+	["Pets.RequestUnequip"] = { Path = "Networking.Pets.RequestUnequip", Name = "RequestUnequip", Namespace = "Networking.Pets", PreferredKind = "Fire", Arity = 1 },
+	["Pets.RequestPurchasePetSlot"] = { Path = "Networking.Pets.RequestPurchasePetSlot", Name = "RequestPurchasePetSlot", Namespace = "Networking.Pets", PreferredKind = "Fire", Arity = 0 },
+	["NPCS.SellPet"] = { Path = "Networking.NPCS.SellPet", Name = "SellPet", Namespace = "Networking.NPCS", PreferredKind = "Invoke", Arity = 1 },
+	["Actions.ExpandGarden"] = { Path = "Networking.Actions.ExpandGarden", Name = "ExpandGarden", Namespace = "Networking.Actions", PreferredKind = "Fire", Arity = 0 },
+	["Shovel.UseShovel"] = { Path = "Networking.Shovel.UseShovel", Name = "UseShovel", Namespace = "Networking.Shovel", PreferredKind = "Fire", Arity = 4 },
+	["Place.PlaceSprinkler"] = { Path = "Networking.Place.PlaceSprinkler", Name = "PlaceSprinkler", Namespace = "Networking.Place", PreferredKind = "Fire", Arity = 4 },
+	["Trowel.MovePlant"] = { Path = "Networking.Trowel.MovePlant", Name = "MovePlant", Namespace = "Networking.Trowel", PreferredKind = "Fire", Arity = 3 },
+	["SeedPack.OpenSeedPack"] = { Path = "Networking.SeedPack.OpenSeedPack", Name = "OpenSeedPack", Namespace = "Networking.SeedPack", PreferredKind = "Invoke", Arity = 1 },
+	["SeedPack.ClickPack"] = { Path = "Networking.SeedPack.ClickPack", Name = "ClickPack", Namespace = "Networking.SeedPack", PreferredKind = "Fire", Arity = 1 },
+	["SeedPack.ConfirmSeedPack"] = { Path = "Networking.SeedPack.ConfirmSeedPack", Name = "ConfirmSeedPack", Namespace = "Networking.SeedPack", PreferredKind = "Fire", Arity = 3 },
+	["Plant.PlantSeed"] = { Path = "Networking.Plant.PlantSeed", Name = "PlantSeed", Namespace = "Networking.Plant", PreferredKind = "Fire", Arity = 3 },
+}
 
 local function valueTypeGAG2(value)
 	if type(typeof) == "function" then
@@ -2295,6 +2325,103 @@ function Reconstructed.NormalizePacketNameGAG2(value)
 	return normalized
 end
 
+local ExcludedPacketTokensGAG2 = {
+	Snapshot = true,
+	StockUpdate = true,
+	PurchaseResult = true,
+	Updated = true,
+	Replicate = true,
+	PlantAdded = true,
+	PlantMoved = true,
+	PlantRemoved = true,
+	PlantGrowthUpdated = true,
+	PlantLifecycleUpdated = true,
+	PlantAgeSync = true,
+	PlantMutationUpdated = true,
+	PlantReviveProgressUpdated = true,
+	PetEquipped = true,
+	PetUnequipped = true,
+	WildPetTameResult = true,
+	WildPetCollected = true,
+	Broadcast = true,
+	Result = true,
+	FX = true,
+	Announce = true,
+	Claimed = true,
+	GearEquipState = true,
+	PersonalRestock = true,
+}
+
+local function confirmedPacketForPathGAG2(path)
+	local normalizedPath = Reconstructed.NormalizePacketNameGAG2(path)
+
+	if normalizedPath == "" then
+		return nil, nil
+	end
+
+	for key, packet in pairs(Reconstructed.ConfirmedPacketsGAG2 or {}) do
+		if Reconstructed.NormalizePacketNameGAG2(packet.Path) == normalizedPath then
+			return packet, key
+		end
+	end
+
+	return nil, nil
+end
+
+local function confirmedPacketArityForPathGAG2(path)
+	local packet = confirmedPacketForPathGAG2(path)
+
+	if packet and packet.Arity ~= nil then
+		return packet.Arity, packet
+	end
+
+	return nil, packet
+end
+
+local function packetArgsCountGAG2(args)
+	if type(args) ~= "table" then
+		return 0
+	end
+
+	if type(args.n) == "number" then
+		return args.n
+	end
+
+	return #args
+end
+
+local function hasExcludedPacketTokenGAG2(text, entry)
+	local normalizedText = Reconstructed.NormalizePacketNameGAG2(text)
+
+	if normalizedText == "" then
+		return false
+	end
+
+	local confirmedPacket = confirmedPacketForPathGAG2(entry and entry.Path)
+
+	for token in pairs(ExcludedPacketTokensGAG2) do
+		local normalizedToken = Reconstructed.NormalizePacketNameGAG2(token)
+
+		if normalizedToken ~= "" and normalizedText:find(normalizedToken, 1, true) then
+			if normalizedToken == "snapshot" and confirmedPacket and Reconstructed.NormalizePacketNameGAG2(confirmedPacket.Name) == "requestsnapshot" then
+				return false
+			end
+
+			return true
+		end
+	end
+
+	return false
+end
+
+local function isExcludedNetworkingPacketGAG2(entry)
+	if not entry then
+		return false
+	end
+
+	return hasExcludedPacketTokenGAG2(entry.Name, entry) or hasExcludedPacketTokenGAG2(entry.Path, entry)
+end
+
 function Reconstructed.ScanNetworkingTableGAG2(root, namespace, path, depth, dump, index, seen, options)
 	options = options or {}
 	dump = dump or {}
@@ -2329,7 +2456,7 @@ function Reconstructed.ScanNetworkingTableGAG2(root, namespace, path, depth, dum
 		Ref = root,
 	}
 
-	if options.RecordAll ~= false or hasPacketCallableGAG2(entry) then
+	if not isExcludedNetworkingPacketGAG2(entry) and (options.RecordAll ~= false or hasPacketCallableGAG2(entry)) then
 		table.insert(dump, entry)
 		addIndexEntryGAG2(index, entry)
 	end
@@ -2662,7 +2789,7 @@ function Reconstructed.ResolveNetworkingPacketGAG2(context, namespaceNames, pack
 		local entries = normalized ~= "" and index.ByName and index.ByName[normalized] or nil
 
 		for _, entry in ipairs(entries or {}) do
-			if entryNamespaceMatchesGAG2(entry, namespaceNames) and hasPacketCallableGAG2(entry) then
+			if entryNamespaceMatchesGAG2(entry, namespaceNames) and hasPacketCallableGAG2(entry) and not isExcludedNetworkingPacketGAG2(entry) then
 				fallback = fallback or entry
 
 				if preferredKindMatchesGAG2(entry, preferredKind) then
@@ -2702,7 +2829,7 @@ function Reconstructed.ResolveNetworkingPacketGAG2(context, namespaceNames, pack
 		local normalizedPath = Reconstructed.NormalizePacketNameGAG2(entry.Path)
 
 		for _, alias in ipairs(normalizedAliases) do
-			if alias ~= "" and normalizedPath:find(alias, 1, true) and entryNamespaceMatchesGAG2(entry, namespaceNames) and hasPacketCallableGAG2(entry) and preferredKindMatchesGAG2(entry, preferredKind) then
+			if alias ~= "" and normalizedPath:find(alias, 1, true) and entryNamespaceMatchesGAG2(entry, namespaceNames) and hasPacketCallableGAG2(entry) and preferredKindMatchesGAG2(entry, preferredKind) and not isExcludedNetworkingPacketGAG2(entry) then
 				local node = entry.Ref or Reconstructed.GetNodeByPacketPathGAG2(context.Networking or Reconstructed.GetNetworkingGAG2(context), entry.Path)
 				return {
 					Entry = entry,
@@ -2762,11 +2889,12 @@ function Reconstructed.SafeCallPacketGAG2(context, packetRef, args, options)
 	end
 
 	local unpackArgs = table.unpack or unpack
+	local argCount = packetArgsCountGAG2(args)
 	local success, result
 
 	if method == "Function" and type(node) == "function" then
 		success, result = safeCall(function()
-			return node(unpackArgs(args))
+			return node(unpackArgs(args, 1, argCount))
 		end)
 	else
 		local callable = safeProp(node, method)
@@ -2777,7 +2905,7 @@ function Reconstructed.SafeCallPacketGAG2(context, packetRef, args, options)
 		end
 
 		success, result = safeCall(function()
-			return callable(node, unpackArgs(args))
+			return callable(node, unpackArgs(args, 1, argCount))
 		end)
 	end
 
@@ -2785,6 +2913,50 @@ function Reconstructed.SafeCallPacketGAG2(context, packetRef, args, options)
 	attempt.Success = success
 	attempt.Result = result
 	return success, result
+end
+
+function Reconstructed.CallConfirmedPacketGAG2(context, key, args, feature)
+	context = context or {}
+	args = args or {}
+
+	local packet = Reconstructed.ConfirmedPacketsGAG2 and Reconstructed.ConfirmedPacketsGAG2[key]
+	if not packet then
+		recordPlanner(feature or "Confirmed Packet", { Key = key, PacketNotFound = true })
+		return false, nil, nil, false
+	end
+
+	if packet.Arity ~= nil and packetArgsCountGAG2(args) ~= packet.Arity then
+		recordPlanner(feature or packet.Name or "Confirmed Packet", { Key = key, Args = args, RequiredArgs = packet.Arity })
+		return false, nil, nil, false
+	end
+
+	local node = Reconstructed.GetNodeByPacketPathGAG2(context.Networking or Reconstructed.GetNetworkingGAG2(context), packet.Path)
+	local flags = getPacketCallableFlagsGAG2(node)
+	local entry = {
+		Path = packet.Path,
+		Name = packet.Name,
+		Namespace = packet.Namespace,
+		HasFire = flags.HasFire,
+		HasInvoke = flags.HasInvoke,
+		HasFireServer = flags.HasFireServer,
+		HasInvokeServer = flags.HasInvokeServer,
+		HasCall = flags.HasCall,
+	}
+	local packetRef = {
+		Entry = entry,
+		Node = node,
+		Path = packet.Path,
+		Name = packet.Name,
+		Namespace = packet.Namespace,
+		PreferredKind = packet.PreferredKind,
+	}
+	local success, result = Reconstructed.SafeCallPacketGAG2(context, packetRef, args, {
+		Feature = feature or packet.Name,
+		PreferredKind = packet.PreferredKind,
+		Method = packet.Method,
+	})
+
+	return success, result, packetRef, true
 end
 
 function Reconstructed.TryPacketCandidatesGAG2(context, candidates, argVariants, options)
@@ -2810,18 +2982,36 @@ function Reconstructed.TryPacketCandidatesGAG2(context, candidates, argVariants,
 			)
 		end
 
-		if packetRef then
-			for _, args in ipairs(argVariants) do
-				attempted = true
-				local success, result = Reconstructed.SafeCallPacketGAG2(context, packetRef, args, {
-					Feature = options.Feature,
-					PreferredKind = packetRef.PreferredKind or options.PreferredKind,
-					Method = packetRef.Method or options.Method,
-				})
+		if packetRef and not isExcludedNetworkingPacketGAG2(packetRef.Entry or packetRef) then
+			local requiredArity = confirmedPacketArityForPathGAG2(packetRef.Path or safeProp(packetRef.Entry, "Path"))
+			local aritySkipped = false
 
-				if success then
-					return true, result, packetRef, true
+			for _, args in ipairs(argVariants) do
+				args = args or {}
+
+				if requiredArity == nil or packetArgsCountGAG2(args) == requiredArity then
+					attempted = true
+					local success, result = Reconstructed.SafeCallPacketGAG2(context, packetRef, args, {
+						Feature = options.Feature,
+						PreferredKind = packetRef.PreferredKind or options.PreferredKind,
+						Method = packetRef.Method or options.Method,
+					})
+
+					if success then
+						return true, result, packetRef, true
+					end
+				else
+					aritySkipped = true
 				end
+			end
+
+			if aritySkipped and not attempted then
+				recordPlanner(options.Feature or "Packet Candidates", {
+					Path = packetRef.Path or safeProp(packetRef.Entry, "Path"),
+					Name = packetRef.Name or safeProp(packetRef.Entry, "Name"),
+					RequiredArgs = requiredArity,
+					ArgVariants = argVariants,
+				})
 			end
 		end
 	end
@@ -2843,6 +3033,11 @@ function Reconstructed.BuySeedGAG2(context, seedName, options)
 
 	if not seedName or seedName == "" then
 		return false
+	end
+
+	local confirmedSuccess = Reconstructed.CallConfirmedPacketGAG2(context, "SeedShop.PurchaseSeed", { seedName }, "Seed Shop")
+	if confirmedSuccess then
+		return true
 	end
 
 	local aliases = { "BuySeed", "PurchaseSeed", "SeedShopPurchase", "PurchaseSeedStock", "BuySeedStock", "BuyItem", "PurchaseItem" }
@@ -2912,6 +3107,11 @@ function Reconstructed.BuyGearGAG2(context, gearName, options)
 		return false
 	end
 
+	local confirmedSuccess = Reconstructed.CallConfirmedPacketGAG2(context, "GearShop.PurchaseGear", { gearName }, "Gear Shop")
+	if confirmedSuccess then
+		return true
+	end
+
 	local success, _, _, attempted = Reconstructed.TryPacketCandidatesGAG2(context, {
 		{
 			Namespaces = { "GearShop", "Gear", "Shop" },
@@ -2928,6 +3128,97 @@ function Reconstructed.BuyGearGAG2(context, gearName, options)
 	end
 
 	return success
+end
+
+function Reconstructed.EquipGearGAG2(context, gearOrName, options)
+	context = context or {}
+	options = options or {}
+
+	local gearName = getAttr(gearOrName, "GearName") or getAttr(gearOrName, "Name") or safeProp(gearOrName, "Name") or gearOrName
+	if not gearName or gearName == "" then
+		return false
+	end
+
+	local confirmedSuccess = Reconstructed.CallConfirmedPacketGAG2(context, "GearShop.EquipGear", { gearName }, "Gear Equip")
+	if confirmedSuccess then
+		return true
+	end
+
+	local success, _, _, attempted = Reconstructed.TryPacketCandidatesGAG2(context, {
+		{
+			Namespaces = { "GearShop", "Gear", "Inventory" },
+			Aliases = { "EquipGear", "GearEquip", "RequestEquipGear", "SetGearEquipped" },
+			PreferredKind = "Fire",
+		},
+	}, {
+		{ gearName },
+		{ gearOrName },
+	}, { Feature = "Gear Equip", PreferredKind = "Fire" })
+
+	if not attempted then
+		Reconstructed.GearShopPlannerStub(context.GAGConfig or Reconstructed.GetEffectiveGAGConfig(), context)
+	end
+
+	return success
+end
+
+function Reconstructed.UnequipGearGAG2(context, gearOrName, options)
+	context = context or {}
+	options = options or {}
+
+	local gearName = getAttr(gearOrName, "GearName") or getAttr(gearOrName, "Name") or safeProp(gearOrName, "Name") or gearOrName
+	if not gearName or gearName == "" then
+		return false
+	end
+
+	local confirmedSuccess = Reconstructed.CallConfirmedPacketGAG2(context, "GearShop.UnequipGear", { gearName }, "Gear Unequip")
+	if confirmedSuccess then
+		return true
+	end
+
+	local success, _, _, attempted = Reconstructed.TryPacketCandidatesGAG2(context, {
+		{
+			Namespaces = { "GearShop", "Gear", "Inventory" },
+			Aliases = { "UnequipGear", "GearUnequip", "RequestUnequipGear", "SetGearUnequipped" },
+			PreferredKind = "Fire",
+		},
+	}, {
+		{ gearName },
+		{ gearOrName },
+	}, { Feature = "Gear Unequip", PreferredKind = "Fire" })
+
+	if not attempted then
+		Reconstructed.GearShopPlannerStub(context.GAGConfig or Reconstructed.GetEffectiveGAGConfig(), context)
+	end
+
+	return success
+end
+
+function Reconstructed.RequestGearStateGAG2(context)
+	context = context or {}
+
+	local confirmedSuccess, confirmedResult = Reconstructed.CallConfirmedPacketGAG2(context, "GearShop.RequestEquippableState", {}, "Gear State")
+	if confirmedSuccess then
+		return confirmedResult
+	end
+
+	local success, result, _, attempted = Reconstructed.TryPacketCandidatesGAG2(context, {
+		{
+			Namespaces = { "GearShop", "Gear", "Inventory" },
+			Aliases = { "RequestEquippableState", "GetEquippableState", "GetGearState", "RequestGearState" },
+			PreferredKind = "Invoke",
+		},
+	}, { {} }, { Feature = "Gear State", PreferredKind = "Invoke" })
+
+	if not attempted then
+		recordPlanner("Gear State", { RuntimePacketRequired = true })
+	end
+
+	if success then
+		return result
+	end
+
+	return nil
 end
 
 function Reconstructed.AutoBuyGearGAG2(context, gagConfig)
@@ -3005,8 +3296,15 @@ function Reconstructed.EquipPetGAG2(context, petOrId, options)
 	local petId = getAttr(petOrId, "PetId") or getAttr(petOrId, "Id") or getAttr(petOrId, "UUID") or petOrId
 	local petName = getAttr(petOrId, "PetName") or safeProp(petOrId, "Name") or tostring(petId or "")
 
-	if not petId or petId == "" then
+	if (not petId or petId == "") and (not petName or petName == "") then
 		return false
+	end
+
+	if petName and petName ~= "" then
+		local confirmedSuccess = Reconstructed.CallConfirmedPacketGAG2(context, "Pets.RequestEquipByName", { petName }, "Pet Equip")
+		if confirmedSuccess then
+			return true
+		end
 	end
 
 	local success, _, _, attempted = Reconstructed.TryPacketCandidatesGAG2(context, {
@@ -3033,6 +3331,11 @@ function Reconstructed.BuyPetSlotGAG2(context, options)
 	context = context or {}
 	options = options or {}
 
+	local confirmedSuccess = Reconstructed.CallConfirmedPacketGAG2(context, "Pets.RequestPurchasePetSlot", {}, "Pet Slots")
+	if confirmedSuccess then
+		return true
+	end
+
 	local success, _, _, attempted = Reconstructed.TryPacketCandidatesGAG2(context, {
 		{
 			Namespaces = { "Pets", "Pet", "Slots", "Shop" },
@@ -3043,6 +3346,38 @@ function Reconstructed.BuyPetSlotGAG2(context, options)
 		{},
 		{ options.MaxSlots },
 	}, { Feature = "Pet Slots", PreferredKind = "Fire" })
+
+	if not attempted then
+		Reconstructed.PetShopPlannerStub(context.GAGConfig or Reconstructed.GetEffectiveGAGConfig(), context)
+	end
+
+	return success
+end
+
+function Reconstructed.SellPetGAG2(context, petOrId, options)
+	context = context or {}
+	options = options or {}
+
+	local petId = getAttr(petOrId, "PetId") or getAttr(petOrId, "Id") or getAttr(petOrId, "UUID") or petOrId
+	if not petId or petId == "" then
+		return false
+	end
+
+	local confirmedSuccess = Reconstructed.CallConfirmedPacketGAG2(context, "NPCS.SellPet", { petId }, "Sell Pet")
+	if confirmedSuccess then
+		return true
+	end
+
+	local success, _, _, attempted = Reconstructed.TryPacketCandidatesGAG2(context, {
+		{
+			Namespaces = { "NPCS", "Pets", "Pet" },
+			Aliases = { "SellPet", "NPCSellPet", "RequestSellPet" },
+			PreferredKind = "Invoke",
+		},
+	}, {
+		{ petId },
+		{ petOrId },
+	}, { Feature = "Sell Pet", PreferredKind = "Invoke" })
 
 	if not attempted then
 		Reconstructed.PetShopPlannerStub(context.GAGConfig or Reconstructed.GetEffectiveGAGConfig(), context)
@@ -3100,9 +3435,48 @@ function Reconstructed.AutoPetsGAG2(context, gagConfig)
 	return acted
 end
 
+function Reconstructed.RequestMailboxListGAG2(context)
+	context = context or {}
+
+	local confirmedSuccess, confirmedResult = Reconstructed.CallConfirmedPacketGAG2(context, "Mailbox.List", {}, "Mailbox List")
+	if confirmedSuccess then
+		return confirmedResult
+	end
+
+	confirmedSuccess, confirmedResult = Reconstructed.CallConfirmedPacketGAG2(context, "Mailbox.OpenInbox", {}, "Mailbox List")
+	if confirmedSuccess then
+		return confirmedResult
+	end
+
+	local success, result, _, attempted = Reconstructed.TryPacketCandidatesGAG2(context, {
+		{
+			Namespaces = { "Mail", "Mailbox", "Gifts" },
+			Aliases = { "List", "OpenInbox", "GetMailbox", "GetInbox", "RequestMailbox", "RequestInbox" },
+			PreferredKind = "Invoke",
+		},
+	}, { {} }, { Feature = "Mailbox List", PreferredKind = "Invoke" })
+
+	if not attempted then
+		Reconstructed.MailPlannerStub(context.GAGConfig or Reconstructed.GetEffectiveGAGConfig(), context)
+	end
+
+	if success then
+		return result
+	end
+
+	return nil
+end
+
 function Reconstructed.ClaimMailGAG2(context, mailId, options)
 	context = context or {}
 	options = options or {}
+
+	if mailId then
+		local confirmedSuccess = Reconstructed.CallConfirmedPacketGAG2(context, "Mailbox.Claim", { mailId }, "Mail")
+		if confirmedSuccess then
+			return true
+		end
+	end
 
 	local argVariants = mailId and { { mailId }, {} } or { {} }
 	local success, _, _, attempted = Reconstructed.TryPacketCandidatesGAG2(context, {
@@ -3130,6 +3504,11 @@ function Reconstructed.SendMailGAG2(context, recipient, itemOrId, options)
 
 	local itemId = getAttr(itemOrId, "Id") or getAttr(itemOrId, "UUID") or getAttr(itemOrId, "PetId") or getAttr(itemOrId, "FruitId") or itemOrId
 	local itemName = safeProp(itemOrId, "Name") or tostring(itemId)
+	local confirmedSuccess = Reconstructed.CallConfirmedPacketGAG2(context, "Mailbox.Send", { recipient, itemId, itemName }, "Mail Send")
+	if confirmedSuccess then
+		return true
+	end
+
 	local success, _, _, attempted = Reconstructed.TryPacketCandidatesGAG2(context, {
 		{
 			Namespaces = { "Mail", "Mailbox", "Gifts" },
@@ -3195,6 +3574,13 @@ function Reconstructed.BuyAuctionLotGAG2(context, lot, price, options)
 
 	lotId = tostring(lotId):gsub("^Lot_", "")
 
+	if lotPrice ~= nil then
+		local confirmedSuccess = Reconstructed.CallConfirmedPacketGAG2(context, "Auctioneer.PurchaseLot", { lotId, lotPrice }, "Auction")
+		if confirmedSuccess then
+			return true
+		end
+	end
+
 	local success, _, _, attempted = Reconstructed.TryPacketCandidatesGAG2(context, {
 		{
 			Namespaces = { "Auction", "Auctioneer" },
@@ -3214,11 +3600,51 @@ function Reconstructed.BuyAuctionLotGAG2(context, lot, price, options)
 	return success
 end
 
+function Reconstructed.RequestAuctionSnapshotGAG2(context)
+	context = context or {}
+
+	local confirmedSuccess, confirmedResult = Reconstructed.CallConfirmedPacketGAG2(context, "Auctioneer.RequestSnapshot", {}, "Auction Snapshot")
+	if confirmedSuccess then
+		return confirmedResult
+	end
+
+	local success, result, _, attempted = Reconstructed.TryPacketCandidatesGAG2(context, {
+		{
+			Namespaces = { "Auction", "Auctioneer" },
+			Aliases = { "RequestSnapshot", "GetSnapshot", "RequestAuctionSnapshot", "GetAuctionLots", "RequestLots" },
+			PreferredKind = "Invoke",
+		},
+	}, { {} }, { Feature = "Auction Snapshot", PreferredKind = "Invoke" })
+
+	if not attempted then
+		Reconstructed.AuctionPlannerStub(context.GAGConfig or Reconstructed.GetEffectiveGAGConfig(), context)
+	end
+
+	if success then
+		return result
+	end
+
+	return nil
+end
+
 function Reconstructed.GetAuctionLotsGAG2(context)
 	context = context or {}
 
 	if type(context.AuctionLots) == "table" then
 		return context.AuctionLots
+	end
+
+	local snapshot = Reconstructed.RequestAuctionSnapshotGAG2(context)
+	if type(snapshot) == "table" then
+		if type(snapshot.Lots) == "table" then
+			return snapshot.Lots
+		end
+
+		if type(snapshot.Items) == "table" then
+			return snapshot.Items
+		end
+
+		return snapshot
 	end
 
 	local auctionGui = context.AuctionGui
@@ -3311,6 +3737,11 @@ function Reconstructed.CollectFruitPacketGAG2(context, plant, fruitId, options)
 		return false
 	end
 
+	local confirmedSuccess = Reconstructed.CallConfirmedPacketGAG2(context, "Garden.CollectFruit", { plantId, targetFruitId }, "Collect Fruit Packet")
+	if confirmedSuccess then
+		return true
+	end
+
 	local success, _, _, attempted = Reconstructed.TryPacketCandidatesGAG2(context, {
 		{
 			Namespaces = { "Plant", "Plants", "Garden", "Fruit", "Harvest" },
@@ -3330,6 +3761,93 @@ function Reconstructed.CollectFruitPacketGAG2(context, plant, fruitId, options)
 	return success
 end
 
+function Reconstructed.ShovelPlantWithArgsGAG2(context, arg1, arg2, arg3, arg4)
+	context = context or {}
+
+	local args = type(arg1) == "table" and arg2 == nil and arg3 == nil and arg4 == nil and arg1 or { arg1, arg2, arg3, arg4 }
+	if packetArgsCountGAG2(args) ~= 4 then
+		recordPlanner("Shovel Runtime Packet", { Args = args, RequiredArgs = 4 })
+		return false
+	end
+
+	local success = Reconstructed.CallConfirmedPacketGAG2(context, "Shovel.UseShovel", args, "Shovel Runtime Packet")
+	return success
+end
+
+function Reconstructed.PlaceSprinklerGAG2(context, arg1, arg2, arg3, arg4)
+	context = context or {}
+
+	local args = type(arg1) == "table" and arg2 == nil and arg3 == nil and arg4 == nil and arg1 or { arg1, arg2, arg3, arg4 }
+	if #args ~= 4 then
+		recordPlanner("Place Sprinkler", { Args = args, RequiredArgs = 4 })
+		return false
+	end
+
+	local success = Reconstructed.CallConfirmedPacketGAG2(context, "Place.PlaceSprinkler", args, "Place Sprinkler")
+	return success
+end
+
+function Reconstructed.MovePlantGAG2(context, arg1, arg2, arg3)
+	context = context or {}
+
+	local args = type(arg1) == "table" and arg2 == nil and arg3 == nil and arg1 or { arg1, arg2, arg3 }
+	if #args ~= 3 then
+		recordPlanner("Move Plant", { Args = args, RequiredArgs = 3 })
+		return false
+	end
+
+	local success = Reconstructed.CallConfirmedPacketGAG2(context, "Trowel.MovePlant", args, "Move Plant")
+	return success
+end
+
+function Reconstructed.OpenSeedPackGAG2(context, packOrId)
+	context = context or {}
+
+	local packId = getAttr(packOrId, "PackId") or getAttr(packOrId, "Id") or getAttr(packOrId, "UUID") or safeProp(packOrId, "Name") or packOrId
+	if not packId or packId == "" then
+		return nil
+	end
+
+	local confirmedSuccess, confirmedResult = Reconstructed.CallConfirmedPacketGAG2(context, "SeedPack.OpenSeedPack", { packId }, "Seed Pack")
+	if confirmedSuccess then
+		return confirmedResult
+	end
+
+	local success, result, _, attempted = Reconstructed.TryPacketCandidatesGAG2(context, {
+		{
+			Namespaces = { "SeedPack", "SeedPacks" },
+			Aliases = { "OpenSeedPack", "OpenPack", "RequestOpenSeedPack" },
+			PreferredKind = "Invoke",
+		},
+	}, {
+		{ packId },
+		{ packOrId },
+	}, { Feature = "Seed Pack", PreferredKind = "Invoke" })
+
+	if not attempted then
+		recordPlanner("Seed Pack", { PackId = packId, RuntimePacketRequired = true })
+	end
+
+	if success then
+		return result
+	end
+
+	return nil
+end
+
+function Reconstructed.PlantSeedPacketGAG2(context, arg1, arg2, arg3)
+	context = context or {}
+
+	local args = type(arg1) == "table" and arg2 == nil and arg3 == nil and arg1 or { arg1, arg2, arg3 }
+	if #args ~= 3 then
+		recordPlanner("Plant Seed Packet", { Args = args, RequiredArgs = 3 })
+		return false
+	end
+
+	local success = Reconstructed.CallConfirmedPacketGAG2(context, "Plant.PlantSeed", args, "Plant Seed Packet")
+	return success
+end
+
 function Reconstructed.ShovelPlantGAG2(context, plant, options)
 	context = context or {}
 	options = options or {}
@@ -3340,22 +3858,29 @@ function Reconstructed.ShovelPlantGAG2(context, plant, options)
 		return false
 	end
 
-	local success, _, _, attempted = Reconstructed.TryPacketCandidatesGAG2(context, {
-		{
-			Namespaces = { "Plant", "Plants", "Garden", "Shovel" },
-			Aliases = { "ShovelPlant", "RemovePlant", "DeletePlant", "DestroyPlant", "DigUpPlant", "Shovel" },
-			PreferredKind = "Fire",
-		},
-	}, {
-		{ plantId },
-		{ plant },
-	}, { Feature = "Shovel Runtime Packet", PreferredKind = "Fire" })
+	local capturedArgs = options.Args
+		or options.PacketArgs
+		or options.UseShovelArgs
+		or options.CapturedArgs
+		or context.ShovelArgsGAG2
+		or context.UseShovelArgsGAG2
+		or context.ShovelPacketArgs
 
-	if not attempted then
-		Reconstructed.ShovelRuntimePacketStub(context.GAGConfig or Reconstructed.GetEffectiveGAGConfig(), context)
+	if type(capturedArgs) == "function" then
+		local success, result = safeCall(capturedArgs, plant, context, options)
+
+		if success then
+			capturedArgs = result
+		end
 	end
 
-	return success
+	if type(capturedArgs) == "table" and packetArgsCountGAG2(capturedArgs) == 4 then
+		return Reconstructed.ShovelPlantWithArgsGAG2(context, capturedArgs)
+	end
+
+	recordPlanner("Shovel Runtime Packet", { PlantId = plantId, RequiredArgs = 4, RuntimePacketRequired = true })
+	Reconstructed.ShovelRuntimePacketStub(context.GAGConfig or Reconstructed.GetEffectiveGAGConfig(), context)
+	return false
 end
 
 function Reconstructed.AutoShovelReplaceGAG2(context, gagConfig)
@@ -3410,6 +3935,11 @@ end
 function Reconstructed.ExpandPlotGAG2(context, options)
 	context = context or {}
 	options = options or {}
+
+	local confirmedSuccess = Reconstructed.CallConfirmedPacketGAG2(context, "Actions.ExpandGarden", {}, "Expand Plot")
+	if confirmedSuccess then
+		return true
+	end
 
 	local plot = context.Plot or Reconstructed.GetOwnerPlot(context)
 	local success, _, _, attempted = Reconstructed.TryPacketCandidatesGAG2(context, {
