@@ -4830,6 +4830,30 @@ function Reconstructed.ApplyBlackScreenGAG(context, gagConfig)
 		return false
 	end
 
+	local statsLabel = findChild(overlay, "BlackStats") or newInstance("TextLabel")
+	if statsLabel then
+		local misc = section(gagConfig, "Misc")
+		local showStats = cfg(misc, "Show Stats", true) == true
+		safeSet(statsLabel, "Name", "BlackStats")
+		safeSet(statsLabel, "Size", UDim2.fromOffset(280, 130))
+		safeSet(statsLabel, "Position", UDim2.fromOffset(20, 20))
+		safeSet(statsLabel, "BackgroundColor3", Color3.fromRGB(0, 0, 0))
+		safeSet(statsLabel, "BackgroundTransparency", 0.15)
+		safeSet(statsLabel, "BorderSizePixel", 0)
+		safeSet(statsLabel, "TextColor3", Color3.fromRGB(255, 255, 255))
+		safeSet(statsLabel, "Font", Enum.Font.SourceSansBold)
+		safeSet(statsLabel, "TextSize", 16)
+		safeSet(statsLabel, "TextXAlignment", Enum.TextXAlignment.Left)
+		safeSet(statsLabel, "TextYAlignment", Enum.TextYAlignment.Top)
+		safeSet(statsLabel, "TextWrapped", true)
+		safeSet(statsLabel, "ZIndex", 2)
+		safeSet(statsLabel, "Visible", showStats)
+		if showStats and Reconstructed.GetRuntimeStatsTextGAG then
+			safeSet(statsLabel, "Text", Reconstructed.GetRuntimeStatsTextGAG(context, gagConfig))
+		end
+		safeSet(statsLabel, "Parent", overlay)
+	end
+
 	local clickSignal = safeProp(button, "MouseButton1Click")
 	if not clickSignal then
 		return false
