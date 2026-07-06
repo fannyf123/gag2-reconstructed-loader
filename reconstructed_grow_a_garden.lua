@@ -5209,6 +5209,7 @@ function Reconstructed.CreateSimpleGUI(context)
 
 	local existing = findChild(playerGui, "GAG2ReconstructedGUI")
 	if existing then
+		safeSet(existing, "DisplayOrder", 1000001)
 		return existing
 	end
 
@@ -5217,6 +5218,7 @@ function Reconstructed.CreateSimpleGUI(context)
 	local gui = Instance.new("ScreenGui")
 	gui.Name = "GAG2ReconstructedGUI"
 	gui.ResetOnSpawn = false
+	gui.DisplayOrder = 1000001
 	gui.Parent = playerGui
 
 	local frame = Instance.new("Frame")
