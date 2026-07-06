@@ -2305,7 +2305,15 @@ function Reconstructed.ScanNetworkingTableGAG2(root, namespace, path, depth, dum
 	namespace = namespace or ""
 
 	local maxDepth = tonumber(options.MaxDepth) or 8
-	local maxEntries = tonumber(options.MaxEntries) or 1500
+	local maxEntries = tonumber(options.MaxEntries)
+
+	if not maxEntries then
+		maxEntries = 1500
+	elseif maxEntries <= 0 then
+		maxEntries = math.huge
+	end
+
+	local includeFunctions = options.IncludeFunctions == true
 	local rootType = type(root)
 	local flags = getPacketCallableFlagsGAG2(root)
 	local entry = {
@@ -2326,7 +2334,7 @@ function Reconstructed.ScanNetworkingTableGAG2(root, namespace, path, depth, dum
 		addIndexEntryGAG2(index, entry)
 	end
 
-	if rootType ~= "table" or depth >= maxDepth or #dump >= maxEntries then
+	if (rootType ~= "table" and (rootType ~= "function" or not includeFunctions)) or depth >= maxDepth or #dump >= maxEntries then
 		return dump, index
 	end
 
@@ -2336,16 +2344,26 @@ function Reconstructed.ScanNetworkingTableGAG2(root, namespace, path, depth, dum
 
 	seen[root] = true
 
-	safeCall(function()
-		for key, child in pairs(root) do
-			if #dump >= maxEntries then
-				break
-			end
+	if rootType == "table" or includeFunctions then
+		safeCall(function()
+			for key, child in pairs(root) do
+				if #dump >= maxEntries then
+					break
+				end
 
-			local childPath = pathChildGAG2(path, key)
-			Reconstructed.ScanNetworkingTableGAG2(child, path, childPath, depth + 1, dump, index, seen, options)
+				local childPath = pathChildGAG2(path, key)
+				Reconstructed.ScanNetworkingTableGAG2(child, path, childPath, depth + 1, dump, index, seen, options)
+			end
+		end)
+	end
+
+	if options.IncludeMetatables and (rootType == "table" or rootType == "function") and #dump < maxEntries then
+		local success, metatable = safeCall(getmetatable, root)
+
+		if success and metatable then
+			Reconstructed.ScanNetworkingTableGAG2(metatable, path, path .. ".<metatable>", depth + 1, dump, index, seen, options)
 		end
-	end)
+	end
 
 	return dump, index
 end
@@ -2380,16 +2398,121 @@ function Reconstructed.ScanNetworkingGAG2(context, options)
 	return index, dump
 end
 
-function Reconstructed.GetNetworkingDumpTextGAG2(context)
+function Reconstructed.ScanNetworkingFullGAG2(context)
+	return Reconstructed.ScanNetworkingGAG2(context, {
+		MaxDepth = 15,
+		MaxEntries = 0,
+		IncludeFunctions = true,
+		IncludeMetatables = false,
+	})
+end
+
+local function networkingDumpEntriesGAG2(dump)
+	if type(dump) ~= "table" then
+		return {}
+	end
+
+	if type(dump.Flat) == "table" then
+		return dump.Flat
+	end
+
+	if #dump > 0 then
+		return dump
+	end
+
+	if type(dump.Entries) == "table" then
+		return dump.Entries
+	end
+
+	return dump
+end
+
+local function safeNetworkingDumpFileNamePartGAG2(value)
+	local name = tostring(value or ""):gsub("[\\/:*?\"<>|]", "_"):gsub("%s+", "_")
+
+	if name == "" or name == "." or name == ".." then
+		return "dump"
+	end
+
+	return name
+end
+
+local function safeNetworkingDumpPathGAG2(path)
+	path = tostring(path or ""):gsub("\\", "/")
+
+	local parts = {}
+
+	for part in path:gmatch("[^/]+") do
+		table.insert(parts, safeNetworkingDumpFileNamePartGAG2(part))
+	end
+
+	return table.concat(parts, "/")
+end
+
+local function ensureNetworkingDumpFolderGAG2(path)
+	local folder = tostring(path or ""):match("^(.*)/[^/]+$")
+
+	if not folder or folder == "" or type(makefolder) ~= "function" then
+		return
+	end
+
+	local exists = false
+
+	if type(isfolder) == "function" then
+		local success, result = safeCall(isfolder, folder)
+		exists = success and result
+	end
+
+	if not exists then
+		safeCall(makefolder, folder)
+	end
+end
+
+function Reconstructed.FilterNetworkingDumpGAG2(dump, namespaceName)
+	local filtered = { Flat = {}, Entries = {} }
+	local namespaceText = tostring(namespaceName or "")
+	local normalizedNamespace = Reconstructed.NormalizePacketNameGAG2(namespaceText)
+	local normalizedPrefix = Reconstructed.NormalizePacketNameGAG2("Networking." .. namespaceText)
+	local pathPrefix = "Networking." .. namespaceText
+
+	for _, entry in ipairs(networkingDumpEntriesGAG2(dump or Reconstructed.NetworkingDumpGAG2)) do
+		local path = tostring(entry.Path or "")
+		local namespace = tostring(entry.Namespace or "")
+		local normalizedPath = Reconstructed.NormalizePacketNameGAG2(path)
+		local normalizedEntryNamespace = Reconstructed.NormalizePacketNameGAG2(namespace)
+		local matches = namespaceText == ""
+			or path:sub(1, #pathPrefix) == pathPrefix
+			or normalizedPath:sub(1, #normalizedPrefix) == normalizedPrefix
+			or normalizedEntryNamespace == normalizedNamespace
+			or normalizedEntryNamespace == normalizedPrefix
+			or (normalizedNamespace ~= "" and normalizedEntryNamespace:find(normalizedNamespace, 1, true) ~= nil)
+
+		if matches then
+			local copied = {}
+
+			for key, value in pairs(entry) do
+				copied[key] = value
+			end
+
+			table.insert(filtered, copied)
+			table.insert(filtered.Flat, copied)
+			table.insert(filtered.Entries, copied)
+		end
+	end
+
+	return filtered
+end
+
+function Reconstructed.GetNetworkingDumpTextGAG2(context, dumpOverride)
 	context = context or {}
 
-	if not Reconstructed.NetworkingDumpGAG2 or #Reconstructed.NetworkingDumpGAG2 == 0 then
+	if dumpOverride == nil and (not Reconstructed.NetworkingDumpGAG2 or #networkingDumpEntriesGAG2(Reconstructed.NetworkingDumpGAG2) == 0) then
 		Reconstructed.ScanNetworkingGAG2(context)
 	end
 
 	local lines = {}
 
-	for _, entry in ipairs(Reconstructed.NetworkingDumpGAG2 or {}) do
+	for _, entry in ipairs(networkingDumpEntriesGAG2(dumpOverride or Reconstructed.NetworkingDumpGAG2)) do
 		local flags = {}
 
 		if entry.HasFire then
@@ -2418,8 +2541,8 @@ function Reconstructed.GetNetworkingDumpTextGAG2(context)
 	return table.concat(lines, "\n")
 end
 
-function Reconstructed.PrintDumpGAG2(context)
-	local text = Reconstructed.GetNetworkingDumpTextGAG2(context)
+function Reconstructed.PrintDumpGAG2(context, dumpOverride)
+	local text = Reconstructed.GetNetworkingDumpTextGAG2(context, dumpOverride)
 
 	if type(print) == "function" then
 		print(text)
@@ -2430,8 +2553,8 @@ function Reconstructed.PrintDumpGAG2(context)
 	return text
 end
 
-function Reconstructed.CopyDumpGAG2(context)
-	local text = Reconstructed.GetNetworkingDumpTextGAG2(context)
+function Reconstructed.CopyDumpGAG2(context, dumpOverride)
+	local text = Reconstructed.GetNetworkingDumpTextGAG2(context, dumpOverride)
 
 	if type(setclipboard) == "function" then
 		local success = safeCall(setclipboard, text)
@@ -2445,10 +2568,18 @@ function Reconstructed.CopyDumpGAG2(context)
 	return false, text
 end
 
-function Reconstructed.SaveDumpGAG2(context)
+function Reconstructed.SaveDumpGAG2(context, dumpOverride, fileName)
 	context = context or {}
-	local text = Reconstructed.GetNetworkingDumpTextGAG2(context)
-	local path = context.NetworkingDumpPath or "GAG2NetworkingDump.txt"
+
+	if type(dumpOverride) == "string" and fileName == nil then
+		fileName = dumpOverride
+		dumpOverride = nil
+	end
+
+	local text = Reconstructed.GetNetworkingDumpTextGAG2(context, dumpOverride)
+	local path = safeNetworkingDumpPathGAG2(fileName or context.NetworkingDumpPath or "GAG2NetworkingDump.txt")
+
+	ensureNetworkingDumpFolderGAG2(path)
 
 	if type(writefile) == "function" then
 		local success = safeCall(writefile, path, text)
@@ -2460,6 +2591,27 @@ function Reconstructed.SaveDumpGAG2(context)
 
 	recordPlanner("Save Networking Dump", { Path = path, Text = text, WriteFileUnavailable = true })
 	return false, path
+end
+
+function Reconstructed.PrintNamespaceDumpGAG2(context, namespaceName)
+	local _, dump = Reconstructed.ScanNetworkingFullGAG2(context)
+	local filtered = Reconstructed.FilterNetworkingDumpGAG2(dump, namespaceName)
+	local text = Reconstructed.GetNetworkingDumpTextGAG2(context, filtered)
+
+	if type(print) == "function" then
+		print(text)
+	else
+		recordAction("NetworkingNamespaceDumpGAG2", tostring(namespaceName or ""), { text })
+	end
+
+	return text, filtered
+end
+
+function Reconstructed.SaveNamespaceDumpGAG2(context, namespaceName, fileNamespaceName)
+	local _, dump = Reconstructed.ScanNetworkingFullGAG2(context)
+	local filtered = Reconstructed.FilterNetworkingDumpGAG2(dump, namespaceName)
+	local fileName = "GAG2/networking_" .. safeNetworkingDumpFileNamePartGAG2(fileNamespaceName or namespaceName) .. ".txt"
+	return Reconstructed.SaveDumpGAG2(context, filtered, fileName)
 end
 
 function Reconstructed.GetNodeByPacketPathGAG2(networking, path)
@@ -4143,6 +4295,162 @@ function Reconstructed.CreateSimpleGUI(context)
 	scroll.CanvasSize = UDim2.fromOffset(0, 0)
 	scroll.Parent = frame
 
+	local resizeHandle = Instance.new("TextButton")
+	resizeHandle.Name = "ResizeHandle"
+	resizeHandle.Size = UDim2.fromOffset(22, 22)
+	resizeHandle.Position = UDim2.new(1, -22, 1, -22)
+	resizeHandle.BackgroundColor3 = Color3.fromRGB(70, 70, 82)
+	resizeHandle.BorderSizePixel = 0
+	resizeHandle.TextColor3 = Color3.fromRGB(255, 255, 255)
+	resizeHandle.Font = Enum.Font.SourceSansBold
+	resizeHandle.TextSize = 16
+	resizeHandle.Text = "↘"
+	resizeHandle.ZIndex = 3
+	resizeHandle.Parent = frame
+
+	local UserInputService = context.UserInputService or getService("UserInputService")
+	local minWidth, minHeight = 280, 300
+	local maxWidth, maxHeight = 600, 700
+	local dragging = false
+	local resizing = false
+	local dragStart = nil
+	local resizeStart = nil
+	local startPosition = nil
+	local startSize = nil
+
+	local function clampNumber(value, minimum, maximum)
+		value = tonumber(value) or minimum
+		if value < minimum then
+			return minimum
+		end
+		if value > maximum then
+			return maximum
+		end
+		return value
+	end
+
+	local function getSafeValue(target, key)
+		local success, value = safeCall(function()
+			return target and target[key]
+		end)
+		if success then
+			return value
+		end
+		return nil
+	end
+
+	local inputTypes = Enum and Enum.UserInputType
+	local mouseButtonInput = inputTypes and inputTypes.MouseButton1
+	local mouseMovementInput = inputTypes and inputTypes.MouseMovement
+	local touchInput = inputTypes and inputTypes.Touch
+
+	local function isPressInput(input)
+		local inputType = getSafeValue(input, "UserInputType")
+		return inputType == mouseButtonInput or inputType == touchInput
+	end
+
+	local function isMoveInput(input)
+		local inputType = getSafeValue(input, "UserInputType")
+		return inputType == mouseMovementInput or inputType == touchInput
+	end
+
+	local function connectInput(signal, callback)
+		if not signal or type(callback) ~= "function" then
+			return nil
+		end
+		local success, connection = safeCall(function()
+			return signal:Connect(callback)
+		end)
+		if success then
+			return connection
+		end
+		return nil
+	end
+
+	local function updateDrag(input)
+		if not dragging or resizing or not dragStart or not startPosition or not isMoveInput(input) then
+			return
+		end
+		local position = getSafeValue(input, "Position")
+		if not position then
+			return
+		end
+		local deltaX = position.X - dragStart.X
+		local deltaY = position.Y - dragStart.Y
+		safeCall(function()
+			frame.Position = UDim2.new(
+				startPosition.X.Scale,
+				startPosition.X.Offset + deltaX,
+				startPosition.Y.Scale,
+				startPosition.Y.Offset + deltaY
+			)
+		end)
+	end
+
+	local function updateResize(input)
+		if not resizing or not resizeStart or not startSize or not isMoveInput(input) then
+			return
+		end
+		local position = getSafeValue(input, "Position")
+		if not position then
+			return
+		end
+		local width = clampNumber(startSize.X + position.X - resizeStart.X, minWidth, maxWidth)
+		local height = clampNumber(startSize.Y + position.Y - resizeStart.Y, minHeight, maxHeight)
+		safeCall(function()
+			frame.Size = UDim2.fromOffset(width, height)
+		end)
+	end
+
+	safeSet(title, "Active", true)
+	safeSet(resizeHandle, "Active", true)
+	safeSet(resizeHandle, "AutoButtonColor", false)
+
+	connectInput(getSafeValue(title, "InputBegan"), function(input)
+		if resizing or not isPressInput(input) then
+			return
+		end
+		local position = getSafeValue(input, "Position")
+		local currentPosition = getSafeValue(frame, "Position")
+		if not position or not currentPosition then
+			return
+		end
+		dragging = true
+		dragStart = position
+		startPosition = currentPosition
+	end)
+
+	connectInput(getSafeValue(resizeHandle, "InputBegan"), function(input)
+		if not isPressInput(input) then
+			return
+		end
+		local position = getSafeValue(input, "Position")
+		local currentSize = getSafeValue(frame, "AbsoluteSize")
+		if not position or not currentSize then
+			return
+		end
+		resizing = true
+		dragging = false
+		resizeStart = position
+		startSize = currentSize
+	end)
+
+	if UserInputService then
+		connectInput(getSafeValue(UserInputService, "InputChanged"), function(input)
+			if resizing then
+				updateResize(input)
+			elseif dragging then
+				updateDrag(input)
+			end
+		end)
+		connectInput(getSafeValue(UserInputService, "InputEnded"), function(input)
+			if isPressInput(input) then
+				dragging = false
+				resizing = false
+			end
+		end)
+	end
+
 	local y = 0
 
 	local function setStatus(text)
@@ -4325,6 +4633,47 @@ function Reconstructed.CreateSimpleGUI(context)
 		context.Require = context.Require or require
 		local _, dump = Reconstructed.ScanNetworkingGAG2(context)
 		setStatus("Networking entries: " .. tostring(#(dump or {})))
+	end, Color3.fromRGB(70, 95, 135))
+	makeButton("SCAN FULL DEPTH 15", function()
+		context.Require = context.Require or require
+		local _, dump = Reconstructed.ScanNetworkingFullGAG2(context)
+		setStatus("Full networking entries: " .. tostring(#(dump or {})))
+	end, Color3.fromRGB(70, 95, 135))
+	makeButton("SAVE FULL DUMP", function()
+		context.Require = context.Require or require
+		local _, dump = Reconstructed.ScanNetworkingFullGAG2(context)
+		local success, path = Reconstructed.SaveDumpGAG2(context, dump, "GAG2/networking_full_depth15.txt")
+		setStatus("Save full dump: " .. tostring(success) .. " " .. tostring(path))
+	end, Color3.fromRGB(70, 95, 135))
+	makeButton("SAVE GEAR DUMP", function()
+		context.Require = context.Require or require
+		local success, path = Reconstructed.SaveNamespaceDumpGAG2(context, "GearShop")
+		setStatus("Save GearShop dump: " .. tostring(success) .. " " .. tostring(path))
+	end, Color3.fromRGB(70, 95, 135))
+	makeButton("SAVE MAIL DUMP", function()
+		context.Require = context.Require or require
+		local success, path = Reconstructed.SaveNamespaceDumpGAG2(context, "Mail")
+		setStatus("Save Mail dump: " .. tostring(success) .. " " .. tostring(path))
+	end, Color3.fromRGB(70, 95, 135))
+	makeButton("SAVE PLANT DUMP", function()
+		context.Require = context.Require or require
+		local success, path = Reconstructed.SaveNamespaceDumpGAG2(context, "Plant")
+		setStatus("Save Plant dump: " .. tostring(success) .. " " .. tostring(path))
+	end, Color3.fromRGB(70, 95, 135))
+	makeButton("SAVE SEEDPACK DUMP", function()
+		context.Require = context.Require or require
+		local success, path = Reconstructed.SaveNamespaceDumpGAG2(context, "SeedPack")
+		setStatus("Save SeedPack dump: " .. tostring(success) .. " " .. tostring(path))
+	end, Color3.fromRGB(70, 95, 135))
+	makeButton("SAVE PET DUMP", function()
+		context.Require = context.Require or require
+		local success, path = Reconstructed.SaveNamespaceDumpGAG2(context, "Pet", "Pet")
+		setStatus("Save Pet dump: " .. tostring(success) .. " " .. tostring(path))
+	end, Color3.fromRGB(70, 95, 135))
+	makeButton("SAVE AUCTION DUMP", function()
+		context.Require = context.Require or require
+		local success, path = Reconstructed.SaveNamespaceDumpGAG2(context, "Auction", "Auction")
+		setStatus("Save Auction dump: " .. tostring(success) .. " " .. tostring(path))
 	end, Color3.fromRGB(70, 95, 135))
 	makeButton("PRINT DUMP", function()
 		context.Require = context.Require or require
